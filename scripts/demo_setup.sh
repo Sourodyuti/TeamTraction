@@ -19,24 +19,39 @@ for i in $(seq 1 30); do
         echo "   ✓ FastAPI is up"
         break
     fi
+    if [ "$i" -eq 30 ]; then
+        echo "   ✗ FastAPI not responding after 60s — continuing anyway"
+    fi
     sleep 2
 done
 
-# 2. Load lecture transcript + textbook into VectorAI DB
-echo "2. Loading lecture transcript..."
-# TODO Phase 1: python data-prep/chunk_lecture.py --transcript data-prep/sample_lecture.txt --lecture-id 1
-echo "   (TODO Phase 1: implement chunk + embed + upsert)"
+# 2. Load lecture transcript into VectorAI DB
+echo "2. Loading lecture transcript (chunk + embed + upsert)..."
+PYTHONPATH=backend python data-prep/chunk_lecture.py \
+    --transcript data-prep/sample_lecture.txt \
+    --lecture-id 1
 
-echo "3. Loading textbook chapter..."
-# TODO Phase 1: python data-prep/load_textbook.py --textbook data-prep/backprop_notes.txt
-echo "   (TODO Phase 1: implement)"
+# 3. Load textbook chapter into VectorAI DB (knowledge vault)
+echo "3. Loading textbook chapter (knowledge vault)..."
+PYTHONPATH=backend python data-prep/load_textbook.py \
+    --textbook data-prep/backprop_notes.txt \
+    --source "3B1B"
 
-# 3. Pre-seed some confusion events for the Pensieve dashboard
-echo "4. Pre-seeding confusion events for Pensieve demo..."
-# TODO Phase 7: curl POST some confusion events to populate the analytics table
-echo "   (TODO Phase 7: implement)"
+# 4. Pre-cache one analogy for the offline/cable-pull demo
+echo "4. Pre-caching analogy for offline demo (chain_rule, cricketer)..."
+PYTHONPATH=backend python -c "
+from services.offline_cache import pre_cache_analogy
+success = pre_cache_analogy(
+    concept_node='chain_rule',
+    chunk_text='The chain rule in backpropagation multiplies gradients layer by layer. '
+               'Each layer gradient depends on the gradient of the layer above it.',
+    avatar_str='cricketer',
+)
+print('Pre-cache:', 'success' if success else 'FAILED (cloud APIs may be unavailable)')
+"
 
 echo ""
 echo "✅ Demo data loaded. Ready for the 3-minute demo."
 echo "   Frontend: http://localhost:3000"
 echo "   API:      http://localhost:8000/health"
+echo "   Cache:    backend/cache/"

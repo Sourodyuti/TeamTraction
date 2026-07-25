@@ -1,0 +1,65 @@
+# Backpropagation — Textbook Notes (Knowledge Vault)
+#
+# 3Blue1Brown-style explainer covering backprop from intuition to math.
+# This is the "knowledge vault" that Accio Analogy retrieves from.
+# Source: textbook
+
+## What is Backpropagation?
+
+Backpropagation is the algorithm that lets neural networks learn from their mistakes. At its core, it's a method for computing how much each weight in the network contributed to the overall error, so we can adjust those weights to make better predictions next time. Think of it as tracing blame backward through a chain of decisions.
+
+## The Forward Pass
+
+During the forward pass, data flows through the network layer by layer. Each neuron takes its inputs, multiplies them by weights, adds a bias, and passes the result through an activation function. The output of one layer becomes the input to the next. At the end, the network produces a prediction — which might be wildly wrong at first.
+
+## The Loss Function
+
+The loss function measures how wrong the prediction is. Mean squared error takes the difference between the prediction and the true answer, squares it, and averages over all examples. Cross-entropy loss is used for classification — it measures how far the predicted probability distribution is from the true one. A high loss means the network is confused; a low loss means it's getting the answer right.
+
+## Why We Need Gradients
+
+To reduce the loss, we need to know which direction to adjust each weight. The gradient of the loss with respect to a weight tells us exactly that — it points in the direction of steepest increase. By moving each weight in the opposite direction of its gradient, we decrease the loss. This is gradient descent: take a step downhill on the loss landscape.
+
+## The Chain Rule — The Heart of Backprop
+
+The chain rule from calculus is what makes backpropagation possible. It says: if y depends on z, and z depends on x, then the derivative of y with respect to x equals the derivative of y with respect to z, multiplied by the derivative of z with respect to x. In a neural network, the loss depends on the output, which depends on the hidden layers, which depend on the weights. The chain rule lets us multiply these derivatives together to trace the effect of any single weight on the final loss.
+
+## Applying the Chain Rule Layer by Layer
+
+In practice, we start at the output layer. The derivative of the loss with respect to the output is straightforward — for mean squared error, it's just twice the prediction error. Then we chain that with the derivative of the activation function (for ReLU, it's 1 if the input was positive, 0 otherwise). Then we chain that with the derivative of the weighted sum with respect to each weight. We repeat this process for every layer, moving backward through the network.
+
+## Vanishing and Exploding Gradients
+
+Here's the problem: when you multiply many small numbers together (layer after layer), the gradient can shrink to nearly zero — it "vanishes." The weights in the early layers barely change, so they never learn. Conversely, if the derivatives are large, the gradient can "explode" to enormous values, causing wild weight updates. This is why deep networks were hard to train before techniques like batch normalization, residual connections, and careful weight initialization.
+
+## The Sigmoid Problem
+
+The sigmoid activation function squashes its input to a range between 0 and 1. Its derivative is at most 0.25. When you multiply several 0.25s together across many layers, the gradient vanishes exponentially fast. This is one reason ReLU (Rectified Linear Unit) became popular — its derivative is either 0 or 1, so gradients don't shrink as they flow backward.
+
+## Weight Updates and Learning Rate
+
+Once we have the gradient for each weight, we update it: new_weight = old_weight - learning_rate * gradient. The learning rate controls how big a step we take. Too large, and we overshoot the minimum; too small, and training takes forever. Finding the right learning rate is one of the most important hyperparameters in deep learning.
+
+## Stochastic Gradient Descent (SGD)
+
+Computing the gradient over the entire dataset for every weight update is expensive. Stochastic gradient descent approximates the full gradient by computing it on a small random batch of examples. This introduces noise, but the noise actually helps — it prevents the optimizer from getting stuck in shallow local minima. Mini-batch SGD strikes a balance between speed and accuracy.
+
+## Backprop in Practice: A Computational Graph
+
+Modern deep learning frameworks like PyTorch represent the forward pass as a computational graph. Each node is an operation (addition, multiplication, activation). During the forward pass, the framework records which operations were performed and in what order. During the backward pass, it walks the graph in reverse, applying the chain rule at each node. This is called automatic differentiation — the programmer never writes gradient formulas by hand.
+
+## The Intuition: Blame Assignment
+
+Think of backpropagation as a blame assignment system. The loss is the "complaint" — the network got something wrong. Backprop traces that complaint backward through every layer, asking: "How much did you contribute to this mistake?" Each weight gets a blame score (its gradient), and then each weight adjusts itself proportionally to its blame. Over many iterations, the blame decreases as the network learns.
+
+## Why Backprop is Efficient
+
+A naive approach would compute the gradient of the loss with respect to each weight independently. For a network with millions of weights, this would be impossibly slow. Backpropagation is efficient because it reuses intermediate results — the gradient at each layer is computed once and shared with all the weights in that layer. This brings the cost of computing all gradients down to roughly twice the cost of a single forward pass.
+
+## Common Confusion Points
+
+Students most commonly get confused about three things in backpropagation. First, the order of multiplication in the chain rule — do you multiply from the output backward, or from the input forward? (Answer: from the output backward.) Second, how the gradient "flows" through activation functions — each activation function has its own derivative that gates the gradient. Third, the difference between the gradient of the loss with respect to the activations versus with respect to the weights — both are needed, but for different purposes.
+
+## Putting It All Together
+
+The complete backpropagation algorithm has three steps: (1) Forward pass — compute the prediction and the loss. (2) Backward pass — compute the gradient of the loss with respect to every weight using the chain rule, working from the output layer back to the input. (3) Update — adjust each weight by subtracting the learning rate times its gradient. Repeat for many batches of training data until the loss converges to a small value.
