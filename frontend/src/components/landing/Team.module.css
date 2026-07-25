@@ -1,0 +1,248 @@
+.section {
+  position: relative;
+  padding: 8rem 1.5rem;
+  background: linear-gradient(180deg, var(--bg-primary) 0%, var(--bg-secondary) 50%, var(--bg-primary) 100%);
+}
+
+.container {
+  max-width: 1280px;
+  margin: 0 auto;
+}
+
+.header {
+  text-align: center;
+  margin-bottom: 4rem;
+}
+
+.title {
+  font-size: clamp(2rem, 4vw, 3rem);
+  font-weight: 700;
+  line-height: 1.2;
+  margin: 1.5rem 0;
+}
+
+.highlight {
+  background: linear-gradient(135deg, var(--gold) 0%, var(--gold-light) 50%, var(--gold) 100%);
+  background-size: 200% auto;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  animation: shimmer-text 3s linear infinite;
+}
+
+.description {
+  font-size: 1.125rem;
+  color: var(--text-secondary);
+  max-width: 700px;
+  margin: 0 auto;
+  line-height: 1.8;
+}
+
+/* Member Cards */
+.memberCard {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.memberHeader {
+  display: flex;
+  align-items: center;
+  gap: 1.25rem;
+  margin-bottom: 1rem;
+}
+
+.avatar {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-display);
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--text-on-gold);
+  flex-shrink: 0;
+  box-shadow: var(--shadow-glow);
+}
+
+.memberInfo {
+  flex: 1;
+  text-align: left;
+}
+
+.memberName {
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0 0 0.5rem 0;
+}
+
+.memberRole {
+  text-transform: capitalize;
+}
+
+.memberDescription {
+  font-size: 0.9375rem;
+  color: var(--text-secondary);
+  line-height: 1.7;
+  margin: 0 0 1rem 0;
+  flex: 1;
+}
+
+.skills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 1.25rem;
+}
+
+.skillBadge {
+  font-family: var(--font-body);
+  font-size: 0.6875rem;
+  padding: 0.25rem 0.625rem;
+}
+
+.memberLinks {
+  display: flex;
+  gap: 1rem;
+}
+
+.socialLink {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: rgba(212, 175, 55, 0.1);
+  border: 1px solid var(--border-gold-transparent);
+  color: var(--gold);
+  transition: all var(--transition-fast);
+}
+
+.socialLink:hover {
+  background: var(--gold);
+  color: var(--text-on-gold);
+  box-shadow: var(--shadow-glow);
+  transform: translateY(-2px);
+}
+
+/* Advisors */
+.advisors {
+  margin-top: 4rem;
+}
+
+.advisorsTitle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  font-size: 1.5rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 2rem;
+}
+
+.advisorsIcon {
+  font-size: 1.5rem;
+}
+
+.advisorsGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 1.5rem;
+}
+
+.advisorCard {
+  text-align: center;
+  padding: 2rem;
+}
+
+.advisorInfo {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.advisorName {
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.advisorRole {
+  font-size: 0.9375rem;
+  color: var(--gold);
+  font-weight: 500;
+}
+
+.advisorDept {
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+}
+
+/* University Card */
+.universityCard {
+  max-width: 600px;
+  margin: 3rem auto 0;
+  text-align: center;
+}
+
+.universityInfo {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1.5rem;
+  margin-bottom: 1.5rem;
+}
+
+.universityLogo {
+  flex-shrink: 0;
+}
+
+.universityName {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin: 0 0 0.25rem 0;
+}
+
+.universityLocation {
+  font-size: 1rem;
+  color: var(--text-secondary);
+  margin: 0 0 0.5rem 0;
+}
+
+.universityTagline {
+  font-size: 0.9375rem;
+  color: var(--text-muted);
+  font-style: italic;
+  margin: 0;
+}
+
+.universityButton {
+  margin-top: 0.5rem;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .memberHeader {
+    flex-direction: column;
+    text-align: center;
+  }
+  
+  .memberInfo {
+    text-align: center;
+  }
+  
+  .advisorsGrid {
+    grid-template-columns: 1fr;
+  }
+  
+  .universityInfo {
+    flex-direction: column;
+    gap: 1rem;
+  }
+}

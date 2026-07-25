@@ -1,0 +1,133 @@
+/* Problem/Solution Section Styles */
+.problemsGrid,
+.solutionsGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 1.5rem;
+}
+
+.problemCard,
+.solutionCard {
+  position: relative;
+  overflow: visible;
+}
+
+.problemIcon,
+.solutionIcon {
+  font-size: 2.5rem;
+  margin-bottom: 0.5rem;
+  filter: drop-shadow(0 0 10px var(--gold));
+}
+
+.problemStat {
+  align-self: flex-start;
+}
+
+.problemSpell,
+.solutionSpell {
+  align-self: flex-start;
+  text-transform: capitalize;
+}
+
+.problemTitle,
+.solutionTitle {
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 0.75rem;
+}
+
+.problemDescription,
+.solutionDescription {
+  font-size: 0.9375rem;
+  color: var(--text-secondary);
+  line-height: 1.7;
+}
+
+/* Differentiator */
+.differentiator {
+  display: flex;
+  align-items: flex-start;
+  gap: 1.5rem;
+  padding: 2.5rem;
+  background: linear-gradient(145deg, rgba(212, 175, 55, 0.08) 0%, transparent 100%);
+  border: 1px solid var(--border-gold-transparent);
+  border-radius: 1.5rem;
+  max-width: 900px;
+  margin: 0 auto;
+  position: relative;
+  overflow: hidden;
+}
+
+.differentiator::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, transparent, var(--gold), transparent);
+  opacity: 0.5;
+}
+
+.differentiatorIcon {
+  flex-shrink: 0;
+  width: 80px;
+  height: 80px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(145deg, var(--bg-tertiary), var(--bg-secondary));
+  border: 1px solid var(--border-gold-transparent);
+  border-radius: 1rem;
+  box-shadow: var(--shadow-parchment);
+}
+
+.differentiatorTitle {
+  font-size: clamp(1.25rem, 2vw, 1.5rem);
+  font-weight: 600;
+  margin-bottom: 0.75rem;
+  color: var(--text-primary);
+}
+
+.differentiatorHighlight {
+  background: linear-gradient(135deg, var(--gold) 0%, var(--gold-light) 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.differentiatorDescription {
+  font-size: 1rem;
+  color: var(--text-secondary);
+  line-height: 1.8;
+}
+
+.differentiatorDescription strong {
+  color: var(--text-primary);
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .problemsGrid,
+  .solutionsGrid {
+    grid-template-columns: 1fr;
+  }
+  
+  .differentiator {
+    flex-direction: column;
+    text-align: center;
+    padding: 2rem 1.5rem;
+  }
+  
+  .differentiatorIcon {
+    margin: 0 auto;
+  }
+}
+
+@media (max-width: 480px) {
+  .problemIcon,
+  .solutionIcon {
+    font-size: 2rem;
+  }
+}

@@ -1,0 +1,122 @@
+.main {
+  min-height: 100vh;
+  position: relative;
+}
+
+/* Skip link for accessibility */
+.skipLink {
+  position: absolute;
+  top: -100%;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--gold);
+  color: var(--text-on-gold);
+  padding: 0.75rem 1.5rem;
+  border-radius: 0.5rem;
+  font-weight: 600;
+  font-family: var(--font-body);
+  z-index: 1000;
+  transition: top var(--transition-fast);
+  text-decoration: none;
+}
+
+.skipLink:focus {
+  top: 1rem;
+}
+
+/* Smooth scroll for anchor links */
+html {
+  scroll-behavior: smooth;
+}
+
+/* Back to top button */
+.backToTop {
+  position: fixed;
+  bottom: 2rem;
+  right: 2rem;
+  width: 56px;
+  height: 56px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, var(--gold) 0%, var(--gold-dark) 100%);
+  border-radius: 50%;
+  color: var(--text-on-gold);
+  box-shadow: var(--shadow-glow);
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(20px);
+  transition: all var(--transition-normal);
+  z-index: 100;
+  text-decoration: none;
+}
+
+.backToTop.visible {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(0);
+}
+
+.backToTop:hover {
+  transform: translateY(-4px);
+  box-shadow: var(--shadow-glow-strong);
+}
+
+/* Show back to top when scrolled */
+@media (prefers-reduced-motion: no-preference) {
+  .backToTop.visible {
+    animation: fadeInUp 0.3s ease-out forwards;
+  }
+}
+
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Focus styles for accessibility */
+.backToTop:focus-visible,
+a:focus-visible,
+button:focus-visible {
+  outline: 2px solid var(--gold);
+  outline-offset: 2px;
+}
+
+/* Skip link for accessibility */
+.skipLink {
+  position: absolute;
+  top: -100%;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--gold);
+  color: var(--text-on-gold);
+  padding: 0.75rem 1.5rem;
+  border-radius: 0.5rem;
+  font-weight: 600;
+  z-index: 1000;
+  transition: top var(--transition-fast);
+}
+
+.skipLink:focus {
+  top: 1rem;
+}
+
+/* Print styles */
+@media print {
+  .backToTop,
+  .skipLink,
+  .custom-cursor,
+  .floating-background {
+    display: none !important;
+  }
+  
+  .section {
+    break-inside: avoid;
+  }
+}
