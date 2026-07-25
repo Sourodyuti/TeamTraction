@@ -33,9 +33,33 @@ export default function RootLayout({
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
         <link rel="preconnect" href="https://cdn.jsdelivr.net" />
+        {/* PWA manifest — required for Chrome installability check */}
+        <link rel="manifest" href="/manifest.json" />
         <link rel="icon" href="/favicon.ico" sizes="any" />
-        <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+        {/* Apple PWA support */}
+        <link rel="apple-touch-icon" href="/icon-192.png" />
+        <meta name="apple-mobile-web-app-capable" content="yes" />
+        <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+        <meta name="apple-mobile-web-app-title" content="Muffliato" />
         <meta name="theme-color" content="#0D0714" />
+        {/* Service Worker registration — runs only in browser context */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+              if ('serviceWorker' in navigator) {
+                window.addEventListener('load', function() {
+                  navigator.serviceWorker.register('/sw.js', { scope: '/' })
+                    .then(function(reg) {
+                      console.log('[Legilimens SW] registered, scope:', reg.scope);
+                    })
+                    .catch(function(err) {
+                      console.warn('[Legilimens SW] registration failed:', err);
+                    });
+                });
+              }
+            `,
+          }}
+        />
       </head>
       <body className="min-h-screen bg-[var(--bg-primary)] text-[var(--text-primary)]">
         <a 
