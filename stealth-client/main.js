@@ -4,19 +4,18 @@ const { app, BrowserWindow, desktopCapturer, session } = require('electron');
 app.commandLine.appendSwitch('enable-media-stream');
 app.commandLine.appendSwitch('disable-web-security');
 
+// Fix for Linux Wayland + Vulkan compatibility crash
+app.commandLine.appendSwitch('disable-vulkan');
+app.disableHardwareAcceleration();
+
+// Enable Wayland screen sharing via PipeWire (fixes Ubuntu 24.04 screen selection)
+app.commandLine.appendSwitch('enable-features', 'WebRTCPipeWireCapturer');
+
 let mainWindow;
 
 async function createWindow() {
-  // Auto-approve screen capture requests
-  session.defaultSession.setDisplayMediaRequestHandler((request, callback) => {
-    desktopCapturer.getSources({ types: ['screen'] }).then((sources) => {
-      // Just pick the primary screen
-      callback({ video: sources[0], audio: 'loopback' });
-    }).catch((err) => {
-      console.error('Error getting sources:', err);
-      callback();
-    });
-  });
+  // We let the OS handle the screen selection dialog instead of auto-picking,
+  // because auto-picking breaks on Ubuntu 24.04 / Wayland.
 
   // Auto-approve microphone/camera permissions
   session.defaultSession.setPermissionRequestHandler((webContents, permission, callback) => {
