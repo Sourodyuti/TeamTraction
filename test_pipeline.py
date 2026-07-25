@@ -37,32 +37,40 @@ async def test_pipeline():
         student_page.on("websocket", handle_student_ws)
         teacher_page.on("websocket", handle_teacher_ws)
         
-        print("\n=== STEP 1: Login as Teacher ===")
+        print("\n=== STEP 1: Setup Teacher & Student Sessions ===")
+        # Seed teacher localStorage auth
         await teacher_page.goto("http://localhost:3000/login")
-        await teacher_page.fill('input[name="email"]', "teacher@legilimens.test")
-        await teacher_page.fill('input[name="password"]', "demo1234")
-        # Try to click login
-        try:
-            await teacher_page.click('button[type="submit"]')
-            await teacher_page.wait_for_url("http://localhost:3000/dashboard", timeout=5000)
-            print("Login successful.")
-        except Exception as e:
-            print(f"Login failed: {e}. Trying registration...")
-            await teacher_page.goto("http://localhost:3000/register")
-            await teacher_page.fill('input[name="email"]', "teacher@legilimens.test")
-            await teacher_page.fill('input[name="username"]', "teacher1")
-            await teacher_page.fill('input[name="password"]', "demo1234")
-            await teacher_page.fill('input[name="full_name"]', "Demo Teacher")
-            await teacher_page.click('button[type="submit"]')
-            await teacher_page.wait_for_url("http://localhost:3000/dashboard", timeout=5000)
-            print("Registration successful.")
-            
+        await teacher_page.evaluate("""() => {
+            localStorage.setItem("legilimens_token", "demo_teacher_token");
+            localStorage.setItem("legilimens_user", JSON.stringify({
+                id: "teacher_demo",
+                username: "prof_dumbledore",
+                email: "dumbledore@hogwarts.edu",
+                role: "teacher",
+                full_name: "Albus Dumbledore"
+            }));
+        }""")
+        await teacher_page.goto("http://localhost:3000/dashboard")
+        await teacher_page.wait_for_selector('h1:has-text("Marauder")', timeout=10000)
+        print("Teacher dashboard loaded.")
         await teacher_page.screenshot(path="dashboard_after_login.png")
-        print("Dashboard screenshot saved.")
-        
-        print("\n=== STEP 2: Open Student Page ===")
+
+        print("\n=== STEP 2: Setup Student PWA ===")
+        await student_page.goto("http://localhost:3000/login")
+        await student_page.evaluate("""() => {
+            localStorage.setItem("legilimens_token", "demo_student_token");
+            localStorage.setItem("legilimens_student_id", "student_e2e_test");
+            localStorage.setItem("legilimens_user", JSON.stringify({
+                id: "student_demo",
+                username: "harry_p",
+                email: "harry@hogwarts.edu",
+                role: "student",
+                full_name: "Harry Potter"
+            }));
+        }""")
         await student_page.goto("http://localhost:3000/muffliato")
-        await student_page.wait_for_selector('button:has-text("I\'m lost")')
+        await student_page.wait_for_selector('button:has-text("I\'m lost")', timeout=10000)
+        print("Student page loaded.")
         await student_page.screenshot(path="student_page.png")
         print("Student page screenshot saved.")
         

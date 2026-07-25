@@ -59,6 +59,7 @@ export default function LoginPage() {
             <label style={s.label}>Email</label>
             <input
               id="login-email"
+              name="email"
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
@@ -73,6 +74,7 @@ export default function LoginPage() {
             <label style={s.label}>Password</label>
             <input
               id="login-password"
+              name="password"
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
