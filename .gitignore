@@ -85,6 +85,9 @@ data/
 *.db
 *.sqlite
 
+# Offline analogy cache (pre-generated for demo)
+backend/cache/
+
 # OS
 Thumbs.db
 ehthumbs.db

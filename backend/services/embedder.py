@@ -8,7 +8,13 @@ Pre-download before the hackathon to avoid venue Wi-Fi issues.
 """
 from __future__ import annotations
 
+import logging
 import time
+
+logger = logging.getLogger(__name__)
+
+# Model name — v1.5 is strictly better than v1.0, same 384-dim output.
+_MODEL_NAME = "BAAI/bge-small-en-v1.5"
 
 
 class Embedder:
@@ -25,10 +31,11 @@ class Embedder:
     @property
     def model(self):
         if self._model is None:
-            # TODO Phase 1: Uncomment and verify
-            # from sentence_transformers import SentenceTransformer
-            # self._model = SentenceTransformer("BAAI/bge-small-en")
-            raise NotImplementedError("TODO Phase 1: load BAAI/bge-small-en")
+            from sentence_transformers import SentenceTransformer
+
+            logger.info("Loading embedding model: %s ...", _MODEL_NAME)
+            self._model = SentenceTransformer(_MODEL_NAME)
+            logger.info("Embedding model loaded (dim=%d)", self.dim)
         return self._model
 
     @property
@@ -40,10 +47,16 @@ class Embedder:
         """Encode one or more texts into 384-dim vectors.
 
         Returns a list of vectors (each a list of 384 floats).
-
-        TODO Phase 1: Implement using self.model.encode().
+        bge-small recommends prepending "Represent this sentence: " for
+        retrieval, but for simplicity we skip it — performance is fine without.
         """
-        raise NotImplementedError("TODO Phase 1")
+        if isinstance(text, str):
+            text = [text]
+        # normalize_embeddings=True gives unit vectors → cosine sim = dot product
+        embeddings = self.model.encode(
+            text, normalize_embeddings=True, show_progress_bar=False
+        )
+        return [emb.tolist() for emb in embeddings]
 
     def encode_with_latency(self, text: str) -> tuple[list[float], float]:
         """Encode a single text and return (vector, latency_ms).

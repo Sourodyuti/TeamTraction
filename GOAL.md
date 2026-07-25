@@ -1,4 +1,4 @@
-# 🎯 GOAL — Legilimens
+REA# 🎯 GOAL — Legilimens
 
 > The north star. Read this first. If a task doesn't move us toward this goal, cut it.
 
