@@ -33,7 +33,7 @@ This is a hackathon project built for a Harry-Potter-themed competition. The sys
 │  🔢 bge-small embedder  — Local 384-dim embeddings (CPU)                    │
 └─────────────────────────────────────────────────────────────────────────────┘
                                     │
-                                    ▼ (only anonymized text leaves)
+                                feat: implement timestamp-aware transcript chunking and add comprehensive unit testing for    ▼ (only anonymized text leaves)
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │ CLOUD (Generative step only)                                                │
 │  🤖 Gemini API      — Analogy rewrite per student interest profile          │

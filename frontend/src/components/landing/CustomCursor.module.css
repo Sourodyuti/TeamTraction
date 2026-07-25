@@ -1,0 +1,121 @@
+.cursor,
+.follower {
+  position: fixed;
+  top: 0;
+  left: 0;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  z-index: 9999;
+  opacity: 0;
+  transition: opacity var(--transition-fast);
+  mix-blend-mode: difference;
+}
+
+.cursor.visible,
+.follower.visible {
+  opacity: 1;
+}
+
+/* Main cursor - wand tip */
+.cursorRing {
+  width: 24px;
+  height: 24px;
+  border: 2px solid var(--gold);
+  border-radius: 50%;
+  box-shadow: 0 0 10px var(--gold), inset 0 0 10px var(--gold);
+  transition: all var(--transition-fast);
+}
+
+.cursorDot {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 4px;
+  height: 4px;
+  background: var(--gold);
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  box-shadow: 0 0 8px var(--gold);
+}
+
+/* Follower - outer ring */
+.follower {
+  width: 40px;
+  height: 40px;
+}
+
+.followerRing {
+  width: 100%;
+  height: 100%;
+  border: 1px solid var(--gold);
+  border-radius: 50%;
+  opacity: 0.5;
+  transition: all var(--transition-normal);
+}
+
+/* States */
+.clicking .cursorRing {
+  transform: scale(0.8);
+  border-width: 3px;
+}
+
+.clicking .followerRing {
+  transform: scale(0.6);
+  opacity: 0.8;
+}
+
+.hovering .cursorRing {
+  transform: scale(1.5);
+  border-color: var(--cyan);
+  box-shadow: 0 0 20px var(--cyan), inset 0 0 10px var(--cyan);
+}
+
+.hovering .cursorDot {
+  background: var(--cyan);
+  box-shadow: 0 0 12px var(--cyan);
+}
+
+.hovering .followerRing {
+  transform: scale(2);
+  border-color: var(--cyan);
+  opacity: 0.3;
+}
+
+/* Sparkle trail on click */
+.clicking::after {
+  content: "✨";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 1rem;
+  animation: sparkle 0.6s ease-out forwards;
+  pointer-events: none;
+}
+
+@keyframes sparkle {
+  0% {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1) rotate(0deg);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0) rotate(180deg);
+  }
+}
+
+/* Reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  .cursor,
+  .follower {
+    display: none;
+  }
+}
+
+/* Mobile fallback */
+@media (max-width: 1024px) {
+  .cursor,
+  .follower {
+    display: none;
+  }
+}
