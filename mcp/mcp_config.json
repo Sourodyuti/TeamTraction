@@ -1,0 +1,49 @@
+{
+  "mcpServers": {
+    "legilimens-vectorai-db": {
+      "command": "python",
+      "args": ["mcp/vectorai_db_mcp.py"],
+      "env": {
+        "VECTORAI_HOST": "localhost",
+        "VECTORAI_PORT": "6574",
+        "VECTORAI_COLLECTION": "lecture_chunks",
+        "VECTORAI_DIM": "384"
+      }
+    },
+    "legilimens-vector-analytics": {
+      "command": "python",
+      "args": ["mcp/vector_analytics_mcp.py"],
+      "env": {
+        "VECTOR_HOST": "localhost",
+        "VECTOR_PORT": "5432",
+        "VECTOR_DATABASE": "actian",
+        "VECTOR_USER": "admin",
+        "VECTOR_PASSWORD": "password"
+      }
+    },
+    "legilimens-embedder": {
+      "command": "python",
+      "args": ["mcp/embedder_mcp.py"],
+      "env": {
+        "EMBEDDER_MODEL": "BAAI/bge-small-en-v1.5"
+      }
+    },
+    "legilimens-gemini": {
+      "command": "python",
+      "args": ["mcp/gemini_mcp.py"],
+      "env": {
+        "GEMINI_API_KEY": "${GEMINI_API_KEY}",
+        "GEMINI_MODEL": "gemini-2.5-flash"
+      }
+    },
+    "legilimens-elevenlabs": {
+      "command": "python",
+      "args": ["mcp/elevenlabs_mcp.py"],
+      "env": {
+        "ELEVENLABS_API_KEY": "${ELEVENLABS_API_KEY}",
+        "ELEVENLABS_VOICE_ID": "21m00Tcm4TlvDq8ikWAM",
+        "ELEVENLABS_MODEL_ID": "eleven_monolingual_v1"
+      }
+    }
+  }
+}

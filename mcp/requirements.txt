@@ -1,0 +1,23 @@
+# MCP Server Dependencies for Legilimens
+
+# Core MCP
+mcp>=1.0.0
+
+# VectorAI DB (Qdrant)
+qdrant-client>=1.9.0
+
+# Actian Vector Analytics
+pyodbc>=5.0.0
+
+# Embedder
+sentence-transformers>=3.0.0
+torch>=2.0.0
+
+# Gemini
+google-genai>=1.0.0
+
+# ElevenLabs
+elevenlabs>=1.0.0
+
+# Utilities
+python-dotenv>=1.0.0
