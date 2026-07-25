@@ -1,0 +1,29 @@
+# Legilimens backend — pinned (minimum) dependencies
+# Add version pins as they're verified during development.
+
+# Web framework
+fastapi>=0.110.0,<1.0
+uvicorn[standard]>=0.29.0
+websockets>=12.0
+pydantic>=2.0
+pydantic-settings>=2.0
+
+# Actian
+actian_vectorai               # Actian VectorAI DB Python SDK (gRPC)
+pyodbc                        # Actian Vector columnar SQL driver
+
+# Embeddings (on-prem, bge-small-en, 384-dim)
+sentence-transformers>=2.0
+
+# Generative (cloud — only for analogy rewrite)
+google-genai                  # Gemini API
+elevenlabs                    # ElevenLabs TTS
+
+# ASR (stretch — Whisper.cpp is native C; this is the Python bridge if needed)
+# openai-whisper              # UNCOMMENT if using Python Whisper instead of whisper.cpp
+
+# Dev / testing
+pytest>=8.0
+httpx                         # Async test client for FastAPI
+mypy
+ruff

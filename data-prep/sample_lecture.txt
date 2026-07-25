@@ -1,0 +1,42 @@
+# Sample Lecture Transcript — Backpropagation
+#
+# This is a placeholder. Replace with a real pre-recorded 5-min lecture transcript
+# before the hackathon (PM owns this). The demo uses a ~90s dense snippet.
+#
+# Format: plain text, optionally with [MM:SS] timestamp markers.
+
+[00:00] Welcome everyone. Today we're covering backpropagation — how neural networks actually learn.
+Let me start with the big picture, then we'll work through the math.
+
+[00:15] A neural network is just a stack of weighted sums followed by nonlinear activations.
+During the forward pass, input flows through these layers and produces a prediction.
+
+[00:30] We compare that prediction to the true answer using a loss function —
+usually mean squared error or cross-entropy. The loss tells us how wrong we are.
+
+[00:45] Now here's where it gets interesting. To reduce the loss, we need to know
+how each weight in the network contributed to the error. That's what backprop computes.
+
+[01:00] Backpropagation uses the chain rule from calculus. The chain rule lets us
+break apart a complicated function into simpler pieces and multiply their derivatives.
+
+[01:15] Here's the tricky part. The chain rule says: if y depends on z, and z depends on x,
+then the derivative of y with respect to x is the product of the individual derivatives.
+
+[01:30] In a deep network, we apply this layer by layer, from the output back to the input.
+Each layer's gradient depends on the gradient of the layer above it.
+
+[01:45] This is the moment most students get lost. The chain rule across many layers
+means the gradients multiply together, and this is where vanishing and exploding gradients come from.
+
+[02:00] Let's make it concrete. Suppose our loss is the square of the prediction error.
+The derivative of the loss with respect to the prediction is just twice the error.
+
+[02:15] Then we chain that with the derivative of the activation function, and then
+with the derivative of the weighted sum. Multiply them all together, layer by layer.
+
+[02:30] That's the whole algorithm. Forward pass to compute the prediction and loss,
+then backward pass to compute gradients using the chain rule, then update the weights.
+
+[02:45] Questions? The most common confusion here is the order of multiplication
+in the chain rule and why the gradients can vanish. Let's pause and make sure that's clear.
