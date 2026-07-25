@@ -20,6 +20,8 @@ def main():
     print("Initializing VectorAI DB client...")
     t0 = time.time()
     vectorai = VectorAIClient()
+    vectorai.connect()
+    vectorai.create_lecture_chunks_collection()
     print(f"VectorAI DB initialized in {time.time() - t0:.2f}s")
 
     chunks = [
@@ -80,7 +82,7 @@ def main():
 
     # Upsert to DB
     t0 = time.time()
-    vectorai.upsert(points)
+    vectorai.upsert_chunks(points)
     print(f"Upserted {len(points)} points to VectorAI DB in {time.time() - t0:.2f}s")
 
     # POST to /asr/ingest-chunk

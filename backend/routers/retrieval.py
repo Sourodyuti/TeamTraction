@@ -72,7 +72,15 @@ async def run_retrieval_pipeline(
                            concept_node)
             best_text = chunk_text
         else:
-            best_text = hits[0].get("text") if isinstance(hits[0], dict) else hits[0].text
+            hit = hits[0]
+            if isinstance(hit, dict):
+                # Result is {"id": ..., "payload": {"text": ..., ...}, "score": ...}
+                payload = hit.get("payload", {})
+                best_text = payload.get("text") or hit.get("text") or chunk_text
+            else:
+                best_text = getattr(hit, "text", None) or chunk_text
+            if not best_text:
+                best_text = chunk_text
     except Exception as e:
         logger.error("Retrieval failed: %s", e)
         # Core failure — can't do anything without retrieval
