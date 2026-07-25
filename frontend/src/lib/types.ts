@@ -41,9 +41,17 @@ export interface TimelinePoint {
 // ─── Server → Client messages ────────────────────────────────────
 
 export type ServerMessage =
-  | { type: "radar_update"; lecture_id: number; student_id: string; signal_type: string }
+  | { type: "radar_update"; lecture_id: number; student_id: string; signal_type: string; concept_node: string }
   | { type: "analogy_audio"; student_id: string; audio_url: string }
-  | { type: "latency_update"; retrieval_ms: number };
+  | {
+      type: "latency_update";
+      retrieval_ms: number;
+      embedding_ms?: number;
+      gemini_ms?: number;
+      total_ms?: number;
+      concept_node?: string;
+      delivered?: boolean;
+    };
 
 // ─── Phase 4-5: Retrieval + Generation ───────────────────────────
 

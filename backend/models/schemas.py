@@ -5,7 +5,7 @@ Keep the schema as the single source of truth — frontend types mirror these.
 """
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from typing import Optional
 
@@ -33,7 +33,7 @@ class InterestAvatar(str, Enum):
 class StudentPing(BaseModel):
     """A student's confusion/got-it signal, sent over WebSocket."""
     student_id: str = Field(..., description="Student identifier (anonymous for privacy)")
-    ts: datetime = Field(default_factory=datetime.now)
+    ts: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     signal_type: SignalType
     lecture_id: int
 
@@ -49,7 +49,7 @@ class LectureChunk(BaseModel):
     subtopic: str = ""
     difficulty: int = Field(default=3, ge=1, le=10)
     source: str = "lecture"  # "lecture" | "textbook"
-    ts: float                  # Start timestamp within the lecture (seconds)
+    ts: float = 0.0                  # Start timestamp within the lecture (seconds)
     vector: Optional[list[float]] = None  # Populated after embedding
 
 
@@ -96,6 +96,7 @@ class AnalogyResponse(BaseModel):
     """The complete analogy ready for Sonorus (ElevenLabs TTS) and student delivery."""
     concept_node: str
     original_text: str       # Best retrieved explanation
-    analogy_text: str         # Gemini-rewritten analogy
+    analogy_text: str         # Gemini-rewritten analogy (or raw text on fallback)
     avatar: InterestAvatar
-    latency_ms: dict          # {"embedding": X, "retrieval": Y, "gemini": Z}
+    latency_ms: dict          # {"embedding": X, "retrieval": Y, "gemini": Z, "elevenlabs": W}
+    audio_url: Optional[str] = None  # TTS audio URL (None if ElevenLabs unavailable)

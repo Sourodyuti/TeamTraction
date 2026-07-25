@@ -22,7 +22,7 @@ export default function MuffliatoPage() {
   const { sendPing, lastMessage, connected } = useWebSocket(lectureId);
 
   const handleSignal = (signalType: SignalType) => {
-    sendPing({ student_id: studentId, signal_type: signalType });
+    sendPing({ student_id: studentId, signal_type: signalType, ts: new Date().toISOString() });
   };
 
   return (

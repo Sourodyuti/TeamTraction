@@ -1,47 +1,186 @@
-"""Accio Analogy — retrieval endpoint (Phase 4).
+"""Accio Analogy — retrieval pipeline orchestration (Phase 4/5/6, production).
 
-Triggers when the confusion threshold is met (≥2 students lost in 20s on
-the same concept_node). Embeds the confusing chunk, queries Actian VectorAI DB
-for the best past explanation, returns top-3 with latency badges.
+This router orchestrates the full retrieval → rewrite → TTS pipeline:
+  1. Embed the confusing chunk (AI lead's Embedder)
+  2. Search VectorAI DB for the best past explanation (AI lead's VectorAIClient)
+  3. Rewrite as an analogy via Gemini (AI lead's GeminiClient)
+  4. Convert to speech via ElevenLabs (AI lead's ElevenLabsClient)
+  5. Return an AnalogyResponse with measured latencies
 
-Phase 5 adds the Gemini rewrite on top of this.
+The AI/ML services are injected as dependencies — they're owned by the AI lead.
+If any service is unavailable, the pipeline degrades gracefully:
+  - Embedder/VectorAI down → return an error (core dependency)
+  - Gemini down → return the raw retrieved explanation
+  - ElevenLabs down → return text only, no audio_url
+
+The WebSocket hub calls `run_retrieval_pipeline()` when the threshold fires.
+REST clients can also trigger retrieval directly via POST /retrieval/accio.
 """
 from __future__ import annotations
 
-import time
+import logging
+from typing import Optional
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 
-from models.schemas import (
-    AnalogyResponse,
-    InterestAvatar,
-    RetrievalResult,
-)
+from config import settings
+from dependencies import get_embedder, get_vectorai
+from models.schemas import AnalogyResponse, AnalogyRequest, InterestAvatar, RetrievalResult
 
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/retrieval", tags=["retrieval"])
 
 
-@router.post("/accio", response_model=AnalogyResponse)
-async def accio_analogy(concept_node: str, chunk_text: str) -> AnalogyResponse:
-    """Embed the confusing chunk → VectorAI DB similarity search → top-3 hits.
+async def run_retrieval_pipeline(
+    concept_node: str,
+    chunk_text: str,
+    avatar: InterestAvatar,
+    student_ids: Optional[list[str]] = None,
+) -> AnalogyResponse:
+    """Full pipeline: embed → retrieve → rewrite → TTS.
 
-    TODO Phase 4: Implement the full flow:
-      1. Embed `chunk_text` with bge-small → 384-dim vector.
-      2. Query VectorAI DB `lecture_chunks` collection with the vector.
-      3. Return top-3 RetrievalResults.
-      4. Measure and include latency in response.
+    Called by the WebSocket hub when threshold fires, or by the REST endpoint.
 
-    TODO Phase 5: After retrieval, call Gemini to rewrite the best hit
-      as an analogy for the student's InterestAvatar.
-
-    For now, returns a stub response.
+    Returns an AnalogyResponse with latencies measured per-stage.
+    Raises HTTPException only on total failure (embedder/retrieval down).
     """
-    # Phase 4 stub — replace with real embed + search
-    stub = AnalogyResponse(
-        concept_node=concept_node or "unknown",
-        original_text="TODO: retrieved from VectorAI DB",
-        analogy_text="TODO: rewritten by Gemini (Phase 5)",
-        avatar=InterestAvatar.CRICKETER,
-        latency_ms={"embedding": 0, "retrieval": 0, "gemini": 0},
+    import time as _time
+
+    latency = {"embedding": 0.0, "retrieval": 0.0, "gemini": 0.0, "elevenlabs": 0.0}
+
+    # ─── 1. Embed the confusing chunk ─────────────────────────────
+    embedder = get_embedder()
+    try:
+        query_vector, emb_ms = embedder.encode_with_latency(chunk_text)
+        latency["embedding"] = emb_ms
+        logger.debug("Embedding: %.1fms (dim=%d)", emb_ms, len(query_vector))
+    except Exception as e:
+        logger.error("Embedding failed — cannot proceed: %s", e)
+        raise HTTPException(status_code=503, detail=f"Embedding service unavailable: {e}")
+
+    # ─── 2. Retrieve best past explanations from VectorAI DB ──────
+    vectorai = get_vectorai()
+    try:
+        t0 = _time.perf_counter()
+        hits = vectorai.search_similar(query_vector, limit=3)
+        latency["retrieval"] = (_time.perf_counter() - t0) * 1000
+        logger.debug("Retrieval: %.1fms (%d hits)", latency["retrieval"], len(hits))
+
+        if not hits:
+            logger.warning("No retrieval hits for concept '%s' — using chunk text as-is",
+                           concept_node)
+            best_text = chunk_text
+        else:
+            best_text = hits[0].get("text") if isinstance(hits[0], dict) else hits[0].text
+    except Exception as e:
+        logger.error("Retrieval failed: %s", e)
+        # Core failure — can't do anything without retrieval
+        raise HTTPException(status_code=503, detail=f"Retrieval service unavailable: {e}")
+
+    # ─── 3. Rewrite as an analogy via Gemini ──────────────────────
+    analogy_text = best_text  # Default: return raw retrieved text
+    try:
+        from services.gemini_client import GeminiClient
+        gemini = GeminiClient()
+        analogy_text, gemini_ms = gemini.rewrite_analogy(concept_node, best_text, avatar)
+        latency["gemini"] = gemini_ms
+        logger.debug("Gemini rewrite: %.1fms", gemini_ms)
+    except Exception as e:
+        # Non-fatal: return the raw retrieved text if Gemini fails
+        logger.warning("Gemini rewrite failed (non-fatal, using raw text): %s", e)
+        latency["gemini"] = 0.0
+
+    # ─── 4. Convert to speech via ElevenLabs ──────────────────────
+    audio_url = None
+    try:
+        from services.elevenlabs_client import ElevenLabsClient
+        tts = ElevenLabsClient()
+        # Generate audio and get a URL the frontend can fetch
+        audio_url = tts.get_audio_url(analogy_text)
+        logger.debug("ElevenLabs TTS: audio_url=%s", audio_url[:50] if audio_url else "None")
+    except Exception as e:
+        # Non-fatal: return text only, no audio
+        logger.warning("ElevenLabs TTS failed (non-fatal, text-only): %s", e)
+
+    total_ms = sum(latency.values())
+    logger.info("Pipeline complete: concept='%s' total=%.0fms "
+                "(embed=%.0f retrieve=%.0f gemini=%.0f)",
+                concept_node, total_ms, latency["embedding"],
+                latency["retrieval"], latency["gemini"])
+
+    return AnalogyResponse(
+        concept_node=concept_node,
+        original_text=best_text,
+        analogy_text=analogy_text,
+        avatar=avatar,
+        latency_ms=latency,
+        audio_url=audio_url,
     )
-    return stub
+
+
+# ─── REST endpoint ───────────────────────────────────────────────
+
+@router.post("/accio", response_model=AnalogyResponse)
+async def accio_analogy(request: AnalogyRequest) -> AnalogyResponse:
+    """Trigger Accio Analogy manually via REST.
+
+    Body:
+        {
+            "concept_node": "chain_rule",
+            "chunk_text": "The chain rule multiplies gradients layer by layer...",
+            "student_ids": ["student_abc"],
+            "avatar": "cricketer"
+        }
+    """
+    logger.info("REST trigger: accio analogy for '%s' (avatar=%s)",
+                request.concept_node, request.avatar.value)
+
+    return await run_retrieval_pipeline(
+        concept_node=request.concept_node,
+        chunk_text=request.chunk_text,
+        avatar=request.avatar,
+        student_ids=request.student_ids,
+    )
+
+
+@router.get("/accio/demo", response_model=AnalogyResponse)
+async def accio_demo(
+    concept_node: str = "chain_rule",
+    chunk_text: str = "The chain rule says gradients multiply layer by layer in backpropagation.",
+    avatar: InterestAvatar = InterestAvatar.CRICKETER,
+) -> AnalogyResponse:
+    """Demo endpoint with sensible defaults — for quick testing without a request body."""
+    return await run_retrieval_pipeline(
+        concept_node=concept_node,
+        chunk_text=chunk_text,
+        avatar=avatar,
+    )
+
+
+@router.get("/health")
+async def retrieval_health() -> dict:
+    """Check the health of the retrieval pipeline dependencies."""
+    embedder_ok = False
+    vectorai_ok = False
+    gemini_configured = bool(settings.gemini_api_key)
+    elevenlabs_configured = bool(settings.elevenlabs_api_key)
+
+    try:
+        get_embedder()
+        embedder_ok = True
+    except Exception:
+        pass
+
+    try:
+        vdb = get_vectorai()
+        vectorai_ok = vdb.health()
+    except Exception:
+        pass
+
+    return {
+        "embedder": embedder_ok,
+        "vectorai_db": vectorai_ok,
+        "gemini_configured": gemini_configured,
+        "elevenlabs_configured": elevenlabs_configured,
+        "ready": embedder_ok and vectorai_ok,
+    }

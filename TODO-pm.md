@@ -8,10 +8,10 @@
 
 ## 🎒 Pre-Hackathon Prep (YOUR responsibility — do this BEFORE day 1)
 
-- [ ] **API keys secured:** Gemini API key + ElevenLabs API key (share with AI lead)
-- [ ] **Pre-recorded 5-min backprop lecture** (audio + accurate transcript) — the demo backbone
-- [ ] **Textbook chapter** (3B1B-style backprop notes) sourced, cleaned, as plain text
-- [ ] **GitHub repo created**, all 4 members have push access
+- [x] **API keys secured:** Gemini API key + ElevenLabs API key (share with AI lead)
+- [x] **Pre-recorded 5-min backprop lecture** (audio + accurate transcript) — the demo backbone
+- [x] **Textbook chapter** (3B1B-style backprop notes) sourced, cleaned, as plain text
+- [x] **GitHub repo created**, all 4 members have push access
 - [ ] **Devfolio account + team registered**, all members invited
 - [ ] **Physical props:**
   - [ ] 3 buzzers OR a dedicated phone page for judges to press
@@ -25,10 +25,10 @@
 
 ## Phase 1 — Content Prep (Hours 2–4)
 
-- [ ] Finalize `data-prep/sample_lecture.txt` with the real backprop transcript (90s dense snippet marked)
-- [ ] Provide textbook chapter text to AI lead for embedding
-- [ ] Identify the "deliberately confusing moment" in the lecture (~0:42 mark, "chain rule")
-- [ ] Write 3 test queries that should return good hits (for retrieval smoke test)
+- [x] Finalize `data-prep/sample_lecture.txt` with the real backprop transcript (90s dense snippet marked)
+- [x] Provide textbook chapter text to AI lead for embedding
+- [x] Identify the "deliberately confusing moment" in the lecture (~0:42 mark, "chain rule")
+- [x] Write 3 test queries that should return good hits (for retrieval smoke test)
 - [ ] **Exit gate:** content is ready for AI lead to embed ✅
 
 ---

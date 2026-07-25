@@ -22,6 +22,7 @@ from models.database import init_confusion_events_table
 from services.embedder import Embedder
 from services.vectorai_client import VectorAIClient
 from services.vector_client import VectorAnalyticsClient
+from dependencies import set_embedder, set_vectorai, set_analytics
 from routers import websocket, asr, retrieval, analytics
 
 logger = logging.getLogger(__name__)
@@ -81,9 +82,10 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         # Pre-warm with a test encoding to trigger any download errors
         _ = embedder.encode("warmup")
         logger.info("Embedder ready (dim=%d)", embedder.dim)
+        set_embedder(embedder)
     except Exception:
         logger.exception("Failed to load embedder — retrieval pipeline will be degraded")
-        embedder = None
+        set_embedder(None)
 
     # 3. Actian VectorAI DB
     logger.info("Connecting to Actian VectorAI DB at %s:%d...", settings.vectorai_host, settings.vectorai_port)
@@ -92,9 +94,10 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         vectorai_client.connect()
         vectorai_client.create_lecture_chunks_collection()
         logger.info("VectorAI DB connected — lecture_chunks collection ready")
+        set_vectorai(vectorai_client)
     except Exception:
         logger.exception("Failed to connect to VectorAI DB — retrieval will be degraded")
-        vectorai_client = None
+        set_vectorai(None)
 
     # 4. Actian Vector (analytics)
     logger.info("Connecting to Actian Vector at %s:%d...", settings.vector_host, settings.vector_port)
@@ -102,9 +105,10 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         vector_analytics = VectorAnalyticsClient()
         init_confusion_events_table()
         logger.info("Actian Vector connected — confusion_events table ready")
+        set_analytics(vector_analytics)
     except Exception:
         logger.exception("Failed to connect to Actian Vector — analytics will be degraded")
-        vector_analytics = None
+        set_analytics(None)
 
     # Log service health summary
     logger.info("Startup complete — embedder=%s, vectorai=%s, analytics=%s",
@@ -114,10 +118,13 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
     # Shutdown
     logger.info("Legilimens shutting down...")
-    if vectorai_client:
-        vectorai_client.close()
-    if vector_analytics:
-        vector_analytics.close()
+    from dependencies import get_vectorai, get_analytics
+    vdb = get_vectorai()
+    if vdb:
+        vdb.close()
+    analytics = get_analytics()
+    if analytics:
+        analytics.close()
     logger.info("Connections closed. Goodbye.")
 
 
@@ -145,14 +152,15 @@ def create_app() -> FastAPI:
     @app.get("/health")
     async def health() -> dict:
         """Liveness + dependency health probe."""
+        from dependencies import get_embedder, get_vectorai, get_analytics
         return {
             "status": "ok",
             "service": "legilimens",
             "version": app.version,
             "services": {
-                "embedder": embedder is not None,
-                "vectorai_db": vectorai_client is not None if vectorai_client else False,
-                "actian_vector": vector_analytics is not None if vector_analytics else False,
+                "embedder": get_embedder() is not None,
+                "vectorai_db": get_vectorai() is not None,
+                "actian_vector": get_analytics() is not None,
             },
         }
 
