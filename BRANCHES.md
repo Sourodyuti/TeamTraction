@@ -15,6 +15,18 @@ main                          ← sacred: only approved, demo-ready PRs merge he
       └── dev/pm              ← Member 4: Demo / PM lead
 ```
 
+All branches were created from commit `63af527` on `main`. Every lane has the full codebase — just work in your files only.
+
+### Latest commits on main (for reference)
+
+```
+63af527 chore: initialize Next.js environment definitions and package-lock file
+f224084 AIML update
+928c2a1 feat: split into 4-member workflow + production backend foundation
+a266ed0 feat: add full-scale storage analysis document for Actian VectorAI and Vector database integration
+844cb21 feat: initialize full-stack repository with project scaffolding, backend services, and frontend radar visualization base
+```
+
 ---
 
 ## Who Owns What (zero overlap = zero conflicts)
