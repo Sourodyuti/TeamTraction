@@ -199,7 +199,7 @@ const styles = {
     borderRadius: "8px",
     width: "100%",
     maxWidth: "360px",
-    textAlign: "center",
+    textAlign: "center" as const,
   },
   audioHint: {
     margin: 0,
@@ -212,7 +212,7 @@ const styles = {
     borderTop: "1px solid rgba(255,255,255,0.1)",
     width: "100%",
     maxWidth: "360px",
-    textAlign: "center",
+    textAlign: "center" as const,
   },
   backLink: {
     color: "var(--gryffindor-gold)",

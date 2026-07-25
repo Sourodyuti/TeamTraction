@@ -45,6 +45,25 @@ class ChunkResponse(BaseModel):
     embedded: bool
 
 
+# ─── Current chunk helper (sync, for websocket) ─────────────────────
+
+_current_chunks: dict[int, dict] = {}
+
+
+def get_current_chunk_sync(lecture_id: int) -> dict | None:
+    """Synchronous helper to get current chunk from in-memory cache.
+    
+    Used by websocket handler to tag student pings to concept nodes.
+    Returns dict with topic_node, chunk_id, text_preview, or None.
+    """
+    return _current_chunks.get(lecture_id)
+
+
+def set_current_chunk_sync(lecture_id: int, chunk: dict) -> None:
+    """Set current chunk in memory cache."""
+    _current_chunks[lecture_id] = chunk
+
+
 # ─── Core ingestion logic ────────────────────────────────────────
 
 def _store_current_chunk(chunk: ChunkIngest, chunk_id: str) -> None:
@@ -91,6 +110,13 @@ def _store_current_chunk(chunk: ChunkIngest, chunk_id: str) -> None:
         except Exception as e2:
             logger.error("Failed to store current chunk: %s", e2)
             raise
+
+    # Update in-memory cache
+    set_current_chunk_sync(chunk.lecture_id, {
+        "topic_node": chunk.topic_node,
+        "chunk_id": chunk_id,
+        "text_preview": text_preview,
+    })
 
 
 async def _embed_and_upsert(chunk: ChunkIngest, chunk_id: str) -> bool:

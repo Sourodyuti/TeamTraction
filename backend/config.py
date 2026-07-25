@@ -20,6 +20,8 @@ class Settings(BaseSettings):
     # ─── Actian VectorAI DB (retrieval brain) ─────────────────────
     vectorai_host: str = "localhost"
     vectorai_port: int = 6574  # gRPC; REST is 6573
+    vectorai_collection: str = "lecture_chunks"
+    vectorai_dim: int = 384  # bge-small-en output
 
     # ─── Actian Vector (columnar analytics) ───────────────────────
     vector_host: str = "localhost"
