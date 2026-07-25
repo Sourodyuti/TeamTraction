@@ -86,6 +86,7 @@ export interface RecordingChunk {
 export type ServerMessage =
   | { type: "radar_update"; lecture_id: number; student_id: string; signal_type: string; concept_node: string }
   | { type: "analogy_audio"; student_id: string; audio_url: string }
+  | { type: "chunk_update"; lecture_id: number; chunk_id: string; topic_node: string }
   | ConfusionAlert
   | AnalogyReady
   | TranscriptUpdate
@@ -101,17 +102,8 @@ export type ServerMessage =
 
 // ─── Phase 4-5: Retrieval + Generation ───────────────────────────
 
-export interface AnalogyResponse {
-  concept_node: string;
-  original_text: string;
-  analogy_text: string;
-  avatar: InterestAvatar;
-  latency_ms: {
-    embedding: number;
-    retrieval: number;
-    gemini: number;
-  };
-}
+
+
 
 // ─── Phase 7: Analytics ──────────────────────────────────────────
 
@@ -120,4 +112,29 @@ export interface TopConfusingMoment {
   lost_count: number;
   total_signals: number;
   avg_density: number;
+}
+
+export interface DensityPoint {
+  ts: string;
+  density: number;
+}
+
+export interface CohortCell {
+  concept_node: string;
+  hour: number;
+  avg_density: number;
+}
+
+export interface AnalogyResponse {
+  concept_node: string;
+  original_text: string;
+  analogy_text: string;
+  avatar: InterestAvatar;
+  audio_url?: string;
+  latency_ms: {
+    embedding: number;
+    retrieval: number;
+    gemini: number;
+    elevenlabs?: number;
+  };
 }

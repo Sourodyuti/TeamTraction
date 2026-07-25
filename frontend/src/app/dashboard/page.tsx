@@ -17,9 +17,9 @@ import { useAuth } from "@/hooks/useAuth";
 import Link from "next/link";
 
 export default function DashboardPage() {
-  const lectureId = 1;
+  const [lectureId, setLectureId] = useState(1);
   const { user, loading: authLoading, logout, requireAuth } = useAuth();
-  const { conceptNodes, timelineData, latencyMs, confusionAlert, lastAnalogy, currentTopic } = useRadarData(lectureId);
+  const { conceptNodes, timelineData, latencyMs, confusionAlert, lastAnalogy, currentTopic, totalStudents } = useRadarData(lectureId);
   const captureState = useScreenCapture();
   const [overlayOpen, setOverlayOpen] = useState(true);
 
@@ -29,7 +29,6 @@ export default function DashboardPage() {
 
   const currentAlert = confusionAlert || null;
   const lostCount = currentAlert ? currentAlert.count : 0;
-  const showOverlay = overlayOpen && (lostCount >= 1 || lastAnalogy != null);
   
   const handleTriggerAnalogy = async () => {
     if (!currentAlert) return;
@@ -51,7 +50,22 @@ export default function DashboardPage() {
     <main style={styles.main}>
       <header style={styles.header}>
         <div style={{ display: "flex", alignItems: "center", gap: "1rem" }}>
-          <h1 style={styles.title}>📡 Marauder&apos;s Radar</h1>
+          <h1 style={styles.title}>
+            📡 Marauder&apos;s Radar
+            {captureState.recordingStatus === 'recording' && (
+              <span style={{ marginLeft: '10px', fontSize: '1rem', color: '#dc2626', animation: 'pulse-glow 2s infinite' }}>🔴 REC</span>
+            )}
+          </h1>
+          <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+            <label style={{ color: "var(--gryffindor-gold)", fontSize: "0.9rem" }}>Lecture:</label>
+            <input 
+              type="number" 
+              value={lectureId} 
+              onChange={(e) => setLectureId(Number(e.target.value) || 1)} 
+              style={{ width: "60px", background: "rgba(0,0,0,0.3)", color: "white", border: "1px solid rgba(255,255,255,0.2)", borderRadius: "4px", padding: "0.25rem 0.5rem" }}
+              min={1}
+            />
+          </div>
           <button 
             style={{
               ...styles.recordToggle,
@@ -119,11 +133,11 @@ export default function DashboardPage() {
         </Link>
       </footer>
 
-      {showOverlay && (
+      {overlayOpen && (
         <ConfusionOverlay
           conceptNode={currentAlert?.concept_node || lastAnalogy?.concept_node || "Unknown"}
           lostCount={lostCount}
-          totalStudents={20} // placeholder or compute
+          totalStudents={totalStudents > 0 ? totalStudents : 20}
           lastAnalogy={lastAnalogy?.analogy_text}
           onTriggerAnalogy={handleTriggerAnalogy}
           visible={overlayOpen}

@@ -1,46 +1,116 @@
 /**
- * FastAPI REST client for the dashboard (Phase 4/7).
- *
- * Wraps fetch calls to the backend. Keeps all endpoint URLs in one place.
+ * FastAPI REST client — all endpoint URLs in one place.
+ * Automatically attaches JWT from localStorage on every authenticated request.
  */
-import type { TopConfusingMoment, AnalogyResponse } from "./types";
+import type { TopConfusingMoment, AnalogyResponse, RecordingChunk } from "./types";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8001";
 
+function authHeaders(): HeadersInit {
+  const token =
+    typeof window !== "undefined"
+      ? localStorage.getItem("legilimens_token")
+      : null;
+  return token
+    ? { "Content-Type": "application/json", Authorization: `Bearer ${token}` }
+    : { "Content-Type": "application/json" };
+}
+
+async function apiFetch<T>(
+  path: string,
+  init: RequestInit = {}
+): Promise<T> {
+  const resp = await fetch(`${API_URL}${path}`, {
+    ...init,
+    headers: { ...authHeaders(), ...(init.headers ?? {}) },
+  });
+  if (!resp.ok) {
+    let detail = `${resp.status} ${resp.statusText}`;
+    try {
+      const body = await resp.json();
+      detail = body.detail ?? detail;
+    } catch {}
+    throw new Error(detail);
+  }
+  return resp.json();
+}
+
 export const api = {
-  async health(): Promise<{ status: string }> {
-    const resp = await fetch(`${API_URL}/health`);
-    return resp.json();
+  // ─── Health ─────────────────────────────────────────────────────
+  health(): Promise<{ status: string; services: Record<string, boolean> }> {
+    return apiFetch("/health");
   },
 
-  async getTopMoments(lectureId: number, limit = 3): Promise<TopConfusingMoment[]> {
-    // TODO Phase 7: real /analytics/top-moments endpoint
-    const resp = await fetch(
-      `${API_URL}/analytics/top-moments?lecture_id=${lectureId}&limit=${limit}`
-    );
-    if (!resp.ok) throw new Error(`analytics failed: ${resp.status}`);
-    return resp.json();
+  // ─── Analytics ──────────────────────────────────────────────────
+  getTopMoments(lectureId: number, limit = 3): Promise<TopConfusingMoment[]> {
+    return apiFetch(`/analytics/top-moments?lecture_id=${lectureId}&limit=${limit}`);
   },
 
-  async getConfusionDensity(lectureId: number): Promise<{ ts: string; density: number }[]> {
-    // TODO Phase 7: real /analytics/density endpoint
-    const resp = await fetch(`${API_URL}/analytics/density?lecture_id=${lectureId}`);
-    if (!resp.ok) throw new Error(`density failed: ${resp.status}`);
-    return resp.json();
+  getDensity(lectureId: number): Promise<{ ts: string; density: number }[]> {
+    return apiFetch(`/analytics/density?lecture_id=${lectureId}`);
   },
 
-  async triggerAccio(
+  getCohortHeatmap(lectureId: number): Promise<{ concept_node: string; hour: number; avg_density: number }[]> {
+    return apiFetch(`/analytics/cohort-heatmap?lecture_id=${lectureId}`);
+  },
+
+  getSummary(lectureId: number): Promise<Record<string, unknown>> {
+    return apiFetch(`/analytics/summary?lecture_id=${lectureId}`);
+  },
+
+  // ─── Recording ──────────────────────────────────────────────────
+  getManifest(lectureId: number): Promise<RecordingChunk[]> {
+    return apiFetch(`/recording/${lectureId}/manifest`);
+  },
+
+  /** Returns a fully-qualified URL for audio playback (no fetch needed). */
+  getChunkAudioUrl(lectureId: number, chunkId: string): string {
+    const token = typeof window !== "undefined" ? localStorage.getItem("legilimens_token") : null;
+    return `${API_URL}/recording/${lectureId}/chunk/${chunkId}${token ? `?token=${token}` : ""}`;
+  },
+
+  // ─── Retrieval ──────────────────────────────────────────────────
+  triggerAnalogy(
+    lectureId: number,
     conceptNode: string,
-    chunkText: string
+    chunkText?: string,
+    avatar: string = "cricketer"
   ): Promise<AnalogyResponse> {
-    // TODO Phase 4: real /retrieval/accio endpoint
-    const resp = await fetch(
-      `${API_URL}/retrieval/accio?concept_node=${encodeURIComponent(
-        conceptNode
-      )}&chunk_text=${encodeURIComponent(chunkText)}`,
-      { method: "POST" }
-    );
-    if (!resp.ok) throw new Error(`retrieval failed: ${resp.status}`);
-    return resp.json();
+    return apiFetch("/retrieval/accio", {
+      method: "POST",
+      body: JSON.stringify({
+        lecture_id: lectureId,
+        concept_node: conceptNode,
+        chunk_text: chunkText ?? conceptNode,
+        avatar,
+      }),
+    });
+  },
+
+  /** Legacy alias kept for backwards compat with pensieve page */
+  triggerAccio(conceptNode: string, chunkText: string): Promise<AnalogyResponse> {
+    return this.triggerAnalogy(1, conceptNode, chunkText);
+  },
+
+  // ─── ASR ────────────────────────────────────────────────────────
+  ingestChunk(payload: {
+    text: string;
+    topic_node?: string;
+    lecture_id?: number;
+    ts?: number;
+    difficulty?: number;
+    source?: string;
+  }): Promise<{ chunk_id: string; status: string; topic_node: string; embedded: boolean }> {
+    return apiFetch("/asr/ingest-chunk", {
+      method: "POST",
+      body: JSON.stringify({
+        text: payload.text,
+        topic_node: payload.topic_node ?? "general",
+        lecture_id: payload.lecture_id ?? 1,
+        ts: payload.ts ?? 0,
+        difficulty: payload.difficulty ?? 3,
+        source: payload.source ?? "lecture",
+      }),
+    });
   },
 };

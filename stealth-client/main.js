@@ -4,18 +4,37 @@ const { app, BrowserWindow, desktopCapturer, session } = require('electron');
 app.commandLine.appendSwitch('enable-media-stream');
 app.commandLine.appendSwitch('disable-web-security');
 
-// Fix for Linux Wayland + Vulkan compatibility crash
-app.commandLine.appendSwitch('disable-vulkan');
-app.disableHardwareAcceleration();
+// Determine if we are running on Linux under Wayland
+const isWayland = process.platform === 'linux' && process.env.WAYLAND_DISPLAY;
 
-// Enable Wayland screen sharing via PipeWire (fixes Ubuntu 24.04 screen selection)
-app.commandLine.appendSwitch('enable-features', 'WebRTCPipeWireCapturer');
+if (isWayland) {
+  // Fix for Linux Wayland + Vulkan compatibility crash
+  app.commandLine.appendSwitch('disable-vulkan');
+  app.disableHardwareAcceleration();
+  // Enable Wayland screen sharing via PipeWire (fixes Ubuntu 24.04 screen selection)
+  app.commandLine.appendSwitch('enable-features', 'WebRTCPipeWireCapturer');
+}
 
 let mainWindow;
 
 async function createWindow() {
-  // We let the OS handle the screen selection dialog instead of auto-picking,
-  // because auto-picking breaks on Ubuntu 24.04 / Wayland.
+  // On Windows, macOS, and X11, Electron REQUIRES a handler for getDisplayMedia to work.
+  // We auto-approve the primary screen for true "stealth" mode.
+  // On Wayland, we intentionally skip this so the OS XDG desktop portal dialog appears.
+  if (!isWayland) {
+    session.defaultSession.setDisplayMediaRequestHandler((request, callback) => {
+      desktopCapturer.getSources({ types: ['screen'] }).then((sources) => {
+        if (sources && sources.length > 0) {
+          callback({ video: sources[0], audio: 'loopback' }); // Auto-pick primary screen
+        } else {
+          callback();
+        }
+      }).catch((err) => {
+        console.error('Error getting sources:', err);
+        callback();
+      });
+    });
+  }
 
   // Auto-approve microphone/camera permissions
   session.defaultSession.setPermissionRequestHandler((webContents, permission, callback) => {

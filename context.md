@@ -1,19 +1,22 @@
-# Context Export - Legilimens Project
+# Context Export — Legilimens Project
 
-**Generated:** July 26, 2026 (Updated)
+**Generated:** July 26, 2026 (Checkpoint 5 — Post Full Audit)
 **Session Context:** Full project context for AI assistant handoff
 
 ---
 
 ## 1. PROJECT OVERVIEW
 
-**Legilimens (TeamTraction)** — A Harry Potter themed real-time classroom confusion detection system for the Actian Hackathon (July 24-26, 2026).
+**Legilimens (TeamTraction)** — A Harry Potter themed real-time classroom confusion detection system for the Actian Hackathon (July 24–26, 2026).
 
 **Core Flow:**
-1. Students press "I'm lost" / "Got it" buttons on their phones
-2. Teachers see real-time radar heatmap of confusion
-3. System auto-generates personalized analogies using Gemini + ElevenLabs
-4. Analytics dashboard shows top confusing moments
+1. Students press "I'm lost" / "Got it" / "Slower" buttons on their phones (Muffliato PWA)
+2. Teachers see a real-time D3 radial heatmap of concept-level confusion (Marauder's Radar)
+3. When ≥2 students signal "lost" within 20s, the system auto-triggers an AI analogy pipeline
+4. Analogy is rewritten by Gemini, voiced by ElevenLabs, delivered to student phones as audio
+5. Teacher sees a floating Cluely-style overlay (ConfusionOverlay) with current topic + alert
+6. Entire lecture is recorded in rolling audio buffer; transcribed live by faster-whisper
+7. Every transcript chunk is immediately embedded and upserted into the live knowledge base
 
 ---
 
@@ -26,110 +29,112 @@ TeamTraction/
 │   ├── config.py                  # Settings (VECTORAI_PORT=6574, BACKEND_PORT=8001)
 │   ├── dependencies.py            # FastAPI dependency injection
 │   ├── logging_config.py          # Structured logging
-│   ├── requirements.txt           # Dependencies
-│   ├── .env                       # API keys (GEMINI, ELEVENLABS)
+│   ├── requirements.txt           # Dependencies (incl. faster-whisper, aiofiles)
+│   ├── .env                       # API keys + MongoDB URI + JWT secret
 │   ├── models/
-│   │   ├── schemas.py             # Pydantic models (StudentPing, AnalogyResponse, etc.)
+│   │   ├── schemas.py             # Pydantic models (StudentPing, AnalogyResponse, RecordingChunk, etc.)
 │   │   └── database.py            # Actian Vector connection pool
 │   ├── routers/
 │   │   ├── websocket.py           # /ws/lecture/{id} WebSocket hub
-│   │   ├── retrieval.py           # /retrieval/accio endpoint
-│   │   ├── analytics.py           # /analytics/* with mock data fallback
-│   │   └── asr.py                 # /asr/ingest-chunk, /current-chunk
+│   │   ├── retrieval.py           # /retrieval/accio + /retrieval/audio/{job_id}
+│   │   ├── analytics.py           # /analytics/* (real Actian Vector SQL, 503 if pyodbc unavailable)
+│   │   ├── asr.py                 # /asr/ingest-chunk, /asr/current-chunk
+│   │   ├── auth.py                # /auth/register, /auth/login, /auth/me (MongoDB + JWT)
+│   │   ├── recording.py           # /recording/{lecture_id}/chunk, /manifest, WebSocket stream
+│   │   └── transcription.py       # /transcription/upload, /transcription/live/{lecture_id} (WebSocket)
 │   ├── services/
 │   │   ├── vectorai_client.py     # Actian VectorAI DB (actian-vectorai-client SDK)
 │   │   ├── vector_client.py       # Actian Vector analytics client
 │   │   ├── embedder.py            # bge-small-en (384-dim)
 │   │   ├── gemini_client.py       # Gemini API (gemini-2.5-flash)
 │   │   ├── gemini_vision.py       # Gemini Vision for screen context
-│   │   ├── elevenlabs_client.py   # ElevenLabs TTS (eleven_flash_v2_5)
-│   │   ├── offline_cache.py       # Pre-cached analogies
-│   │   └── whisper_service.py     # Whisper.cpp integration
+│   │   ├── elevenlabs_client.py   # ElevenLabs TTS (eleven_flash_v2_5) + get_audio_url()
+│   │   ├── offline_cache.py       # Pre-cached analogies for cable-pull demo
+│   │   ├── whisper_service.py     # faster-whisper (base.en, CPU, int8)
+│   │   ├── recording_service.py   # Rolling 5-min audio buffer, manifest, disk persistence
+│   │   ├── knowledge_base.py      # Live knowledge base: in-memory index + VectorAI upsert
+│   │   └── mongodb_client.py      # MongoDB Atlas client (auth/user storage)
 │   └── tests/                     # Pytest test suite
 ├── frontend/
-│   ├── package.json
+│   ├── package.json               # Next.js 14, React 18, D3, Recharts
 │   ├── .env.local                 # NEXT_PUBLIC_API_URL=http://localhost:8001
-│   ├── src/
-│   │   ├── app/
-│   │   │   ├── page.tsx           # Landing page
-│   │   │   ├── muffliato/         # Student PWA
-│   │   │   └── dashboard/         # Teacher dashboard
-│   │   ├── components/
-│   │   │   ├── landing/           # Hero, Architecture, Team, Sponsors
-│   │   │   ├── radar/             # RadarHeatmap (D3)
-│   │   │   ├── timeline/          # Timeline (Recharts)
-│   │   │   ├── overlay/           # TeacherAlert, StudentAnalogy
-│   │   │   └── ui/                # Badge, Button, Card
-│   │   ├── hooks/
-│   │   │   ├── useWebSocket.ts    # WebSocket hook with role parameter
-│   │   │   ├── useRadarData.ts    # Radar data processing (connects as teacher)
-│   │   │   └── useScreenShare.ts  # Screen capture hook
-│   │   └── lib/
-│   │       ├── api.ts             # REST client
-│   │       ├── types.ts           # TypeScript types
-│   │       └── design-tokens.ts   # Hogwarts theme
-│   └── public/
+│   └── src/
+│       ├── app/
+│       │   ├── page.tsx           # Landing page (Harry Potter themed)
+│       │   ├── login/page.tsx     # Login (redirects teacher→/dashboard, student→/muffliato)
+│       │   ├── register/page.tsx  # Register with role selector
+│       │   ├── muffliato/         # Student PWA (thumb buttons + analogy display + toast)
+│       │   ├── overlay/           # Stealth overlay page (loaded by Electron)
+│       │   └── dashboard/
+│       │       ├── page.tsx       # Teacher dashboard (radar + ConfusionOverlay + REC badge)
+│       │       ├── pensieve/      # Analytics (density chart + cohort heatmap + Re-teach)
+│       │       └── review/        # Lecture recording review (real API + audio playback)
+│       ├── components/
+│       │   ├── landing/           # Hero, Architecture, Team, Sponsors, LiveDemo, etc.
+│       │   ├── radar/             # RadarHeatmap (D3)
+│       │   ├── timeline/          # Timeline (Recharts)
+│       │   ├── capture/           # ScreenCapturePanel
+│       │   ├── overlay/           # ConfusionOverlay, ScreenShare, TeacherAlert, StudentAnalogy
+│       │   └── ui/                # Badge, Button, Card, ScrollReveal, Section
+│       ├── hooks/
+│       │   ├── useWebSocket.ts    # WebSocket hook with role param
+│       │   ├── useRadarData.ts    # Radar + confusion_alert + analogy_ready + transcript_update
+│       │   ├── useScreenCapture.ts # getDisplayMedia + MediaRecorder → /transcription/live WS
+│       │   ├── useScreenShare.ts  # Re-export of useScreenCapture (deduplication)
+│       │   ├── useOverlayState.ts # Overlay position/opacity persisted to localStorage
+│       │   └── useAuth.ts         # JWT auth hook (read/store legilimens_token)
+│       └── lib/
+│           ├── api.ts             # REST client — all endpoints, JWT auth headers, error extraction
+│           ├── types.ts           # TypeScript types (mirrors Pydantic schemas)
+│           └── design-tokens.ts   # Hogwarts theme
+├── stealth-client/
+│   ├── main.js                    # Electron main — transparent, frameless, alwaysOnTop window
+│   ├── package.json               # electron devDep
+│   └── README.md                  # How to run the overlay
 ├── scripts/
 │   ├── start_demo.sh              # One-command startup
-│   └── benchmark_latency.py       # Latency tests
-├── docker-compose.yml
-├── handoff.md                     # This file
-├── context.md                     # Current file
-├── CLAUDE.md
+│   ├── benchmark_latency.py       # Latency tests
+│   └── seed_chunks.py             # Seeds 5 lecture chunks into VectorAI DB
+├── docker-compose.yml             # Dev compose (port 8001, VectorAI)
+├── docker-compose.prod.yml        # Production compose (DigitalOcean)
+├── DEPLOY.md                      # DigitalOcean deployment guide
+├── handoff.md                     # Handoff doc (always keep current)
+├── context.md                     # This file
 └── README.md
 ```
 
 ---
 
-## 3. KEY SOURCE FILES
+## 3. KEY ARCHITECTURE DECISIONS
 
-### backend/routers/analytics.py
-```python
-# CHECKS: pyodbc availability at module load
-# FALLBACK: Returns mock data when Actian Vector unavailable
-# ENDPOINTS:
-#   - GET /analytics/top-moments
-#   - GET /analytics/density
-#   - GET /analytics/summary
-#   - GET /analytics/cohort-heatmap
-# MOCK DATA: chain_rule (12 lost), gradient_descent (8 lost), backprop (5 lost)
-```
+### Auth (MongoDB Atlas + JWT)
+- `bcrypt` used directly (NOT passlib — passlib 1.7.4 crashes on Python 3.14 with bcrypt 4.x)
+- JWT secret: `LEGILIMENS_SECRET` env var
+- Token stored in browser `localStorage` as `legilimens_token`
+- All API calls send `Authorization: Bearer <token>` header
+- Student ID persisted to `localStorage` as `legilimens_student_id`
 
-### backend/routers/websocket.py
-```python
-# ENDPOINT: /ws/lecture/{lecture_id}?role=teacher|student
-# ROLE HANDLING:
-#   - role="teacher": receives teacher_alert messages
-#   - role="student": default, sends pings
-# MESSAGE TYPES: ping, radar_update, analogy_audio, teacher_alert
-# FEATURES:
-#   - Confusion threshold detection (≥2 lost in 20s)
-#   - Auto-triggers Accio analogy
-#   - Backends calls to port 8001 (not hardcoded)
-```
+### Screen Capture + Overlay (Cluely-style)
+- **Electron stealth client** (`stealth-client/`) loads `http://localhost:3000/overlay` in a transparent, frameless, always-on-top Electron window
+- On **Windows/macOS**: auto-selects primary screen via `setDisplayMediaRequestHandler` (no popup)
+- On **Linux Wayland**: uses PipeWire (`--enable-features=WebRTCPipeWireCapturer`), shows native portal dialog
+- On **Linux X11**: auto-selects like Windows
+- **Frontend `useScreenCapture` hook**: sends audio chunks every 3s via WebSocket to `/transcription/live/{lectureId}`
 
-### backend/services/vectorai_client.py
-```python
-# SDK: actian-vectorai-client (NOT qdrant-client)
-# PORT: 6574 (gRPC), 6573 (REST)
-# COLLECTION: lecture_chunks (384-dim, Cosine distance)
-# METHODS: connect(), search_similar(), upsert_chunks()
-```
+### Live Knowledge Base
+- Every transcript chunk → `knowledge_base.index_chunk()` → embed → VectorAI upsert (synchronous)
+- In-memory reverse index: `{lecture_id: [{chunk_id, topic_node, ts, text_preview}]}`
+- Students can query late: `search_knowledge(query, lecture_id)` returns most relevant past chunks
 
-### frontend/src/hooks/useWebSocket.ts
-```typescript
-// SIGNATURE: useWebSocket(lectureId: number, role: "student" | "teacher" = "student")
-// URL: ws://localhost:8001/ws/lecture/{id}?role={role}
-// RETURNS: { connected, lastMessage, sendPing }
-// RECONNECT: Auto-reconnect with backoff (max 5s)
-```
+### Recording Buffer
+- Rolling 5-min in-memory deque + disk persistence to `backend/recordings/{lecture_id}/{ts}.webm`
+- Manifest: `backend/recordings/{lecture_id}/manifest.json`
+- Served via `/recording/{lecture_id}/chunk/{chunk_id}`
 
-### frontend/src/hooks/useRadarData.ts
-```typescript
-// CONNECTS AS: useWebSocket(lectureId, "teacher")  // ← Important!
-// PROCESSES: radar_update messages → ConceptNode array
-// STATE: conceptNodes, timelineData, latencyMs
-```
+### Faster-Whisper
+- Model: `base.en`, device: `cpu`, compute_type: `int8`
+- `transcribe_stream_chunk(audio_bytes) -> str` for live WebSocket transcription
+- Auto-injects each transcript into ASR pipeline → knowledge base → dashboard broadcast
 
 ---
 
@@ -145,21 +150,17 @@ VECTORAI_DIM=384
 GEMINI_API_KEY=<your_key>
 ELEVENLABS_API_KEY=<your_key>
 
+MONGODB_URI=mongodb+srv://sourodyutibiswassanyal14_db_user:<password>@cluster0.fd5h7vb.mongodb.net/?appName=Cluster0
+MONGODB_DB_NAME=legilimens
+LEGILIMENS_SECRET=<jwt_secret>
+LEGILIMENS_PASSWORD=Legilimens2026
+
 CORS_ORIGINS=["http://localhost:3000","http://localhost:3001"]
 ```
 
-### frontend/.env.local (CREATED THIS SESSION)
+### frontend/.env.local
 ```bash
 NEXT_PUBLIC_API_URL=http://localhost:8001
-```
-
-### Environment Variable Usage
-```typescript
-// frontend/src/hooks/useWebSocket.ts
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "ws://localhost:8001";
-
-// frontend/src/lib/api.ts
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8001";
 ```
 
 ---
@@ -167,175 +168,160 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8001";
 ## 5. RUNNING COMMANDS
 
 ```bash
-# Start VectorAI DB (one-time)
-docker run -d --name vectorai -p 6573-6575:6573-6575 -e ACTIAN_VECTORAI_ACCEPT_EULA=YES actian/vectorai:latest
-
-# Or restart if already created
+# Terminal 1: VectorAI DB
 docker start vectorai
+# First time: docker run -d --name vectorai -p 6573-6575:6573-6575 \
+#   -e ACTIAN_VECTORAI_ACCEPT_EULA=YES actian/vectorai:latest
 
-# Start Backend (port 8001)
-cd backend
+# Terminal 2: Backend
+cd /home/souro/Downloads/TeamTraction/backend
 source ../.venv/bin/activate
 uvicorn main:app --host 0.0.0.0 --port 8001
 
-# Start Frontend (port 3000)
-cd frontend
+# Terminal 3: Frontend
+cd /home/souro/Downloads/TeamTraction/frontend
 npm run dev
+
+# Terminal 4: Stealth Electron Overlay (optional, teacher-side)
+cd /home/souro/Downloads/TeamTraction/stealth-client
+npm start
+
+# One-time seed (run after docker restart)
+cd /home/souro/Downloads/TeamTraction
+source .venv/bin/activate
+python scripts/seed_chunks.py
 ```
 
 ---
 
-## 6. KNOWN ISSUES (RESOLVED)
-
-### Analytics DB Unavailable
-```python
-# ERROR: ImportError: libodbc.so.2: cannot open shared object file
-# CAUSE: pyodbc requires unixodbc system library
-# SOLUTION: Implemented mock data fallback in analytics.py
-# RESULT: All analytics endpoints work and return demo data
-```
-
-### WebSocket Double Connection
-```typescript
-// EXPERIENCE: Two WebSocket connections in dev mode
-// CAUSE: React Strict Mode mounts components twice
-// IMPACT: None - both connections work correctly
-// LOGS: Console shows "[Legilimens WS] connected" twice
-```
-
----
-
-## 7. API ENDPOINTS
+## 6. API ENDPOINTS (COMPLETE)
 
 ### Backend (port 8001)
 | Method | Path | Description | Status |
 |--------|------|-------------|--------|
-| GET | /health | Health check | ✅ Working |
+| GET | /health | Health check + services map | ✅ Working |
 | WS | /ws/lecture/{id}?role={role} | WebSocket hub | ✅ Working |
-| GET | /analytics/top-moments | Top confusing moments | ✅ Mock data |
-| GET | /analytics/density | Confusion timeline | ✅ Mock data |
-| GET | /analytics/summary | Lecture summary | ✅ Mock data |
-| GET | /analytics/cohort-heatmap | Cohort breakdown | ✅ Mock data |
-| POST | /retrieval/accio | Retrieve + rewrite analogy | ✅ Ready |
-| POST | /asr/ingest-chunk | Ingest transcript | ✅ Ready |
+| POST | /auth/register | Register user (teacher/student) | ✅ Working |
+| POST | /auth/login | Login → JWT token | ✅ Working |
+| GET | /auth/me | Get current user | ✅ Working |
+| POST | /asr/ingest-chunk | Ingest transcript chunk | ✅ Working |
+| GET | /asr/current-chunk | Get latest chunk | ✅ Working |
+| POST | /retrieval/accio | Full analogy pipeline | ✅ Working |
+| GET | /retrieval/accio/demo | Demo with defaults | ✅ Working |
+| GET | /retrieval/audio/{job_id} | Serve generated audio | ✅ Working |
+| GET | /analytics/top-moments | Top confusing moments | ⚠️ 503 without pyodbc |
+| GET | /analytics/density | Confusion density timeline | ⚠️ 503 without pyodbc |
+| GET | /analytics/cohort-heatmap | Cohort heatmap | ⚠️ 503 without pyodbc |
+| GET | /analytics/summary | Lecture summary | ⚠️ 503 without pyodbc |
+| POST | /recording/{id}/chunk | Store audio chunk | ✅ Working |
+| GET | /recording/{id}/manifest | List all chunks | ✅ Working |
+| GET | /recording/{id}/chunk/{cid} | Serve audio chunk | ✅ Working |
+| WS | /recording/{id}/stream | Live recording stream | ✅ Working |
+| POST | /transcription/upload | Upload audio file → Whisper | ✅ Working |
+| WS | /transcription/live/{id} | Live audio → Whisper → KB | ✅ Working |
+| GET | /transcription/status | Whisper model status | ✅ Working |
 
 ### Frontend (port 3000)
-| Path | Description | WebSocket Role |
-|------|-------------|----------------|
+| Path | Description | Auth |
+|------|-------------|------|
 | / | Landing page | None |
+| /login | Login form | None |
+| /register | Register with role | None |
 | /muffliato | Student PWA | student |
-| /dashboard | Teacher dashboard | teacher |
-| /dashboard/pensieve | Analytics | None |
+| /dashboard | Teacher dashboard + overlay | teacher |
+| /dashboard/pensieve | Analytics charts | teacher |
+| /dashboard/review | Recording review + search | teacher |
+| /overlay | Stealth Electron overlay page | None |
 
 ---
 
-## 8. VERIFIED WORKING FLOW
+## 7. FRONTEND lib/api.ts — ALL METHODS
 
+```typescript
+api.health()
+api.getTopMoments(lectureId, limit?)
+api.getDensity(lectureId)
+api.getCohortHeatmap(lectureId)
+api.getSummary(lectureId)
+api.getManifest(lectureId)
+api.getChunkAudioUrl(lectureId, chunkId)   // Returns URL string (no fetch)
+api.triggerAnalogy(lectureId, conceptNode, chunkText?, avatar?)
+api.triggerAccio(conceptNode, chunkText)    // Legacy alias
+api.ingestChunk({ text, topic_node?, lecture_id?, ts?, difficulty?, source? })
 ```
-1. Open http://localhost:3000/dashboard
-   → Console: "[Legilimens WS] connected to ws://localhost:8001/ws/lecture/1?role=teacher"
-   → Shows "awaiting signal..."
-
-2. Open http://localhost:3000/muffliato
-   → Console: "[Legilimens WS] connected to ws://localhost:8001/ws/lecture/1?role=student"
-   → Shows "🟢 Connected"
-
-3. Click "🪄 I'm lost" button
-   → Backend: "Teacher alert sent: lecture=1 concept=unknown count=1"
-   → Dashboard: New node "unknown" appears on radar
-
-4. Check http://localhost:3000/dashboard/pensieve
-   → Shows mock table with chain_rule, gradient_descent, backprop
-```
+All methods auto-attach `Authorization: Bearer <token>` from `localStorage.legilimens_token`.
 
 ---
 
-## 9. SPONSOR REQUIREMENTS
+## 8. KNOWN ISSUES & RESOLUTIONS
+
+| Issue | Resolution |
+|-------|-----------|
+| `passlib` crashes on Python 3.14 + bcrypt 4.x | Use `bcrypt` library directly in auth.py |
+| `pyodbc` / `unixodbc` not installed locally | analytics.py raises 503; acceptable for local dev |
+| Wayland screen capture dialog | `--enable-features=WebRTCPipeWireCapturer` in Electron |
+| Review page had hardcoded mock data | Fixed — real API fetch + real audio playback |
+| Pensieve page had TODO comments | Fixed — full rewrite with SVG charts |
+| `useScreenShare` was a duplicate hook | Fixed — re-exports `useScreenCapture` |
+| Missing CSS vars (`--gryffindor-gold` etc.) | Fixed in globals.css |
+| `api.ts` missing JWT auth + 6 endpoints | Fixed — complete rewrite |
+| `types.ts` missing `chunk_update` ServerMessage | Fixed |
+| Debug JSON footer visible to students | Fixed in muffliato/page.tsx |
+| Student ID regenerated on each render | Fixed — persisted via localStorage |
+
+---
+
+## 9. TESTING STATUS
+
+### Backend
+- ✅ Auth: register + login verified (MongoDB Atlas)
+- ✅ Embedder: 384-dim vectors
+- ✅ VectorAI: 5 seed chunks loaded
+- ✅ Retrieval pipeline: embed→retrieve→Gemini→ElevenLabs verified
+- ✅ Recording service: chunk storage + manifest
+- ✅ Transcription: faster-whisper base.en
+- ⚠️ Analytics SQL: 503 locally (no unixodbc); works on full Docker stack
+
+### Frontend
+- ✅ TypeScript: 0 errors (`npm run typecheck` clean)
+- ✅ All 11 pages/routes compile
+- ✅ Auth flow: login/register/redirect by role
+- ✅ Student PWA: WebSocket, signal buttons, toast, audio playback
+- ✅ Teacher Dashboard: radar, overlay always-visible, REC badge, lecture selector
+- ✅ Pensieve: SVG bar chart, cohort heatmap, shimmer skeletons, Re-teach
+- ✅ Recording Review: real manifest fetch, real audio playback, semantic search
+- ✅ Overlay page: loads in Electron stealth window
+
+---
+
+## 10. SPONSOR REQUIREMENTS
 
 | Sponsor | Requirement | Implementation | Status |
 |---------|-------------|----------------|--------|
-| Actian | VectorAI DB | `actian-vectorai-client` SDK, port 6574 | ✅ Working |
-| Actian | Vector SQL | Mock data fallback | ✅ Working |
-| Google Gemini | Analogy rewrite | `gemini-2.5-flash` model | ✅ Ready |
-| ElevenLabs | TTS voice | `eleven_flash_v2_5` model | ✅ Ready |
+| Actian VectorAI | Vector search | `actian-vectorai-client`, port 6574, 384-dim | ✅ 2ms retrieval |
+| Actian Vector SQL | Columnar analytics | pyodbc SQL queries in analytics.py | ⚠️ 503 locally |
+| Google Gemini | Analogy rewrite | `gemini-2.5-flash`, rewrite_analogy() | ✅ Verified |
+| ElevenLabs | TTS voice | `eleven_flash_v2_5`, base64 audio URI | ✅ Verified |
 
 ---
 
-## 10. TESTING STATUS
+## 11. DEPLOYMENT (DIGITALOCEAN)
 
-### Backend Services
-- ✅ Embedder: Works (384-dim vectors)
-- ✅ VectorAI Client: Connects, searches work
-- ✅ WebSocket Server: Accepts connections, broadcasts messages
-- ✅ Analytics API: Returns mock data
-- ✅ Health Endpoint: Returns correct status
-
-### Frontend
-- ✅ Build: `npm run build` passes
-- ✅ Landing Page: Renders correctly
-- ✅ Student PWA: WebSocket connects, buttons work
-- ✅ Teacher Dashboard: WebSocket connects as teacher, receives updates
-- ✅ Pensieve Analytics: Shows mock data table
-
----
-
-## 11. CHANGES THIS SESSION
-
-### backend/routers/analytics.py
-```python
-# Added pyodbc availability check at module level
-_PYODBC_AVAILABLE = False
-try:
-    import pyodbc
-    _PYODBC_AVAILABLE = True
-except ImportError:
-    logger.warning("pyodbc not available - analytics will return mock data")
-
-# Each endpoint now has try/except with mock data fallback
-def _execute_query(...):
-    if not _PYODBC_AVAILABLE:
-        raise HTTPException(status_code=503, ...)
-```
-
-### backend/routers/websocket.py
-```python
-# Fixed hardcoded port in _trigger_accio()
-# WAS: async with httpx.AsyncClient(base_url="http://localhost:8000", ...)
-# NOW: backend_url = f"http://localhost:{backend_port}"
-```
-
-### frontend/src/hooks/useWebSocket.ts
-```typescript
-// Added role parameter
-// WAS: useWebSocket(lectureId: number)
-// NOW: useWebSocket(lectureId: number, role: "student" | "teacher" = "student")
-
-// Updated URL construction
-const wsUrl = `${API_URL.replace(/^http/, "ws")}/ws/lecture/${lectureId}?role=${role}`;
-```
-
-### frontend/src/hooks/useRadarData.ts
-```typescript
-// Changed to connect as teacher
-// WAS: const { lastMessage } = useWebSocket(lectureId);
-// NOW: const { lastMessage } = useWebSocket(lectureId, "teacher");
-```
-
-### frontend/.env.local
-```bash
-# Created new file
-NEXT_PUBLIC_API_URL=http://localhost:8001
-```
+- `docker-compose.prod.yml` ready with Nginx proxy + SSL
+- `DEPLOY.md` has full DigitalOcean Droplet instructions
+- `backend/.env.prod.example` has production env template
+- **User confirmed:** run locally first, deploy later
 
 ---
 
 ## 12. NEXT TASKS
 
-1. [ ] Seed lecture chunks: `POST /asr/ingest-chunk`
-2. [ ] Test full retrieval pipeline with Gemini
-3. [ ] Test audio generation with ElevenLabs
-4. [ ] Load sample data before demo
-5. [ ] Practice demo script
+1. [ ] Pre-cache one analogy for cable-pull demo: `python scripts/demo_setup.sh`
+2. [ ] Switch Gemini model to `gemini-2.0-flash-lite` to reduce 12s → ~800ms latency
+3. [ ] Test WebSocket confusion threshold trigger end-to-end (2 students → auto Accio)
+4. [ ] Test stealth Electron overlay on Windows
+5. [ ] Seed VectorAI DB before each demo: `python scripts/seed_chunks.py`
+6. [ ] Practice 3-minute demo script
 
 ---
 
