@@ -1,0 +1,77 @@
+# Legilimens — Docker Compose
+# Brings up: Actian VectorAI DB (on-prem retrieval) + Actian Vector Community (columnar analytics) + FastAPI orchestrator.
+#
+# ⚠️ TODO VERIFY: The exact Actian Docker image names below must be confirmed against Actian's
+#    official documentation before first `docker-compose up`. The ports (6573 REST / 6574 gRPC for
+#    VectorAI DB) come from the blueprint; the image tags are placeholders to be verified.
+#    Docs to check: Actian VectorAI DB Docker quickstart + `actian/vector5.0:community` for Vector.
+
+services:
+  # ───────────────────────────────────────────────────────────────
+  # Actian VectorAI DB — the retrieval brain (on-prem, air-gapped-capable)
+  # REST on 6573, gRPC on 6574. No auth for local dev.
+  # ───────────────────────────────────────────────────────────────
+  vectorai-db:
+    # TODO VERIFY: confirm exact image name + tag from Actian docs
+    image: actian/vectorai:latest
+    container_name: legilimens-vectorai
+    ports:
+      - "6573:6573"   # REST
+      - "6574:6574"   # gRPC (Python SDK default)
+    volumes:
+      - vectorai-data:/vectorai/data
+    restart: unless-stopped
+    healthcheck:
+      # TODO VERIFY: replace with a real VectorAI DB health endpoint once confirmed
+      test: ["CMD", "curl", "-f", "http://localhost:6573/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # ───────────────────────────────────────────────────────────────
+  # Actian Vector (Analytics Engine) — columnar SQL for confusion time-series.
+  # Community image per blueprint §5.
+  # ───────────────────────────────────────────────────────────────
+  actian-vector:
+    image: actian/vector5.0:community
+    container_name: legilimens-vector
+    ports:
+      # TODO VERIFY: confirm the SQL access port Actian Vector exposes by default
+      - "5432:5432"
+    volumes:
+      - vector-data:/actian/vector/data
+    restart: unless-stopped
+
+  # ───────────────────────────────────────────────────────────────
+  # FastAPI orchestrator — WebSocket hub + REST + retrieval/analytics.
+  # Runs the app from ./backend via uvicorn.
+  # ───────────────────────────────────────────────────────────────
+  fastapi:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: legilimens-fastapi
+    depends_on:
+      vectorai-db:
+        condition: service_healthy
+      actian-vector:
+        condition: service_started
+    environment:
+      VECTORAI_HOST: vectorai-db
+      VECTORAI_PORT: "6574"
+      VECTOR_HOST: actian-vector
+      VECTOR_PORT: "5432"
+      # GEMINI_API_KEY / ELEVENLABS_API_KEY loaded from .env (see .env.example)
+    env_file:
+      - .env
+    ports:
+      - "8000:8000"
+    volumes:
+      # Dev: live-reload the backend source
+      - ./backend:/app
+    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+    restart: unless-stopped
+
+volumes:
+  vectorai-data:
+  vector-data:

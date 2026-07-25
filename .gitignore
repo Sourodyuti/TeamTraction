@@ -1,0 +1,94 @@
+# Byte Order Mark
+# EF BB BF
+
+# Dependencies
+node_modules/
+
+# Python (broad — covers backend/, data-prep/, scripts/)
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+
+# Virtualenvs (any location)
+.venv/
+venv/
+env/
+
+# Environment files
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+backend/.env
+frontend/.env
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Docker
+.docker/
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# Testing
+coverage/
+.nyc_output/
+.coverage
+htmlcov/
+.pytest_cache/
+.tox/
+.mypy_cache/
+.hypothesis/
+
+# Build outputs
+frontend/.next/
+frontend/out/
+frontend/build/
+backend/dist/
+
+# Model files (large, downloaded at runtime)
+backend/models/
+backend/models/ggml-*.bin
+*.bin
+*.gguf
+
+# Embedding cache
+backend/.sentence_transformers/
+~/.cache/huggingface/
+~/.cache/torch/
+
+# Whisper.cpp build
+whisper.cpp/build/
+whisper.cpp/ggml-*.bin
+
+# Actian data (if persisted locally)
+data/
+*.db
+*.sqlite
+
+# OS
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Misc
+*.pem
+.vercel
+.turbo
+*.tsbuildinfo
+.next/
