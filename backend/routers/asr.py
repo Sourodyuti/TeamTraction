@@ -67,56 +67,55 @@ def set_current_chunk_sync(lecture_id: int, chunk: dict) -> None:
 # ─── Core ingestion logic ────────────────────────────────────────
 
 def _store_current_chunk(chunk: ChunkIngest, chunk_id: str) -> None:
-    """Upsert the chunk into the current_chunk table (tracks the 'live' concept node)."""
-    text_preview = chunk.text[:256]  # Truncate for the preview column
+    """Upsert the chunk into the current_chunk table (tracks the 'live' concept node).
+    
+    Always updates the in-memory cache. SQL write is best-effort — if pyodbc/libodbc
+    is unavailable (local dev without Actian Vector), we log once at debug level and
+    continue. The in-memory cache is sufficient for the demo.
+    """
+    text_preview = chunk.text[:256]
     ts_now = datetime.now(timezone.utc)
 
-    try:
-        with get_vector_connection() as conn:
-            cursor = conn.cursor()
-            # Upsert: if lecture_id exists, update; otherwise insert
-            cursor.execute(
-                """
-                MERGE INTO current_chunk t
-                USING (SELECT ? AS lecture_id, ? AS chunk_id, ? AS topic_node,
-                          ? AS text_preview, ? AS ts) AS src
-                ON (t.lecture_id = src.lecture_id)
-                WHEN MATCHED THEN UPDATE SET
-                    chunk_id = src.chunk_id,
-                    topic_node = src.topic_node,
-                    text_preview = src.text_preview,
-                    ts = src.ts
-                WHEN NOT MATCHED THEN INSERT
-                    (lecture_id, chunk_id, topic_node, text_preview, ts)
-                    VALUES (src.lecture_id, src.chunk_id, src.topic_node, src.text_preview, src.ts)
-                """,
-                (chunk.lecture_id, chunk_id, chunk.topic_node, text_preview, ts_now),
-            )
-    except Exception as e:
-        # Fallback: simple INSERT/UPDATE if MERGE not supported
-        logger.warning("MERGE failed, trying INSERT/UPDATE: %s", e)
-        try:
-            with get_vector_connection() as conn:
-                cursor = conn.cursor()
-                cursor.execute(
-                    "DELETE FROM current_chunk WHERE lecture_id = ?",
-                    (chunk.lecture_id,),
-                )
-                cursor.execute(
-                    """INSERT INTO current_chunk (lecture_id, chunk_id, topic_node, text_preview, ts)
-                       VALUES (?, ?, ?, ?, ?)""",
-                    (chunk.lecture_id, chunk_id, chunk.topic_node, text_preview, ts_now),
-                )
-        except Exception as e2:
-            logger.error("Failed to store current chunk: %s", e2)
-            raise
-
-    # Update in-memory cache
+    # Always update in-memory cache first — this is what WebSocket uses
     set_current_chunk_sync(chunk.lecture_id, {
         "topic_node": chunk.topic_node,
         "chunk_id": chunk_id,
         "text_preview": text_preview,
     })
+
+    # Best-effort SQL write — fails silently if Actian Vector is unavailable
+    try:
+        with get_vector_connection() as conn:
+            cursor = conn.cursor()
+            try:
+                cursor.execute(
+                    """
+                    MERGE INTO current_chunk t
+                    USING (SELECT ? AS lecture_id, ? AS chunk_id, ? AS topic_node,
+                              ? AS text_preview, ? AS ts) AS src
+                    ON (t.lecture_id = src.lecture_id)
+                    WHEN MATCHED THEN UPDATE SET
+                        chunk_id = src.chunk_id, topic_node = src.topic_node,
+                        text_preview = src.text_preview, ts = src.ts
+                    WHEN NOT MATCHED THEN INSERT
+                        (lecture_id, chunk_id, topic_node, text_preview, ts)
+                        VALUES (src.lecture_id, src.chunk_id, src.topic_node,
+                                src.text_preview, src.ts)
+                    """,
+                    (chunk.lecture_id, chunk_id, chunk.topic_node, text_preview, ts_now),
+                )
+            except Exception:
+                # MERGE not supported — try DELETE + INSERT
+                cursor.execute("DELETE FROM current_chunk WHERE lecture_id = ?",
+                               (chunk.lecture_id,))
+                cursor.execute(
+                    "INSERT INTO current_chunk (lecture_id, chunk_id, topic_node, text_preview, ts)"
+                    " VALUES (?, ?, ?, ?, ?)",
+                    (chunk.lecture_id, chunk_id, chunk.topic_node, text_preview, ts_now),
+                )
+    except Exception as e:
+        # Actian Vector unavailable — in-memory cache already updated, no further action needed
+        logger.debug("SQL chunk store skipped (Actian Vector unavailable): %s", type(e).__name__)
 
 
 async def _embed_and_upsert(chunk: ChunkIngest, chunk_id: str) -> bool:
@@ -160,8 +159,8 @@ async def _embed_and_upsert(chunk: ChunkIngest, chunk_id: str) -> bool:
 async def _broadcast_chunk_update(lecture_id: int, chunk_id: str, topic_node: str) -> None:
     """Notify connected dashboards that a new chunk arrived."""
     try:
-        from routers.websocket import manager
-        await manager.broadcast_to_lecture(lecture_id, {
+        from routers.websocket import broadcast_to_lecture
+        await broadcast_to_lecture(lecture_id, {
             "type": "chunk_update",
             "lecture_id": lecture_id,
             "chunk_id": chunk_id,
@@ -183,12 +182,8 @@ async def ingest_chunk(chunk: ChunkIngest, background_tasks: BackgroundTasks) ->
     """
     chunk_id = f"{chunk.lecture_id}_{int(time.time() * 1000)}"
 
-    # 1. Store in current_chunk (synchronous — this is what pings tag to)
-    try:
-        _store_current_chunk(chunk, chunk_id)
-    except Exception as e:
-        logger.error("Failed to store chunk: %s", e)
-        raise HTTPException(status_code=503, detail=f"Failed to store chunk: {e}")
+    # 1. Store in current_chunk (in-memory always; SQL best-effort)
+    _store_current_chunk(chunk, chunk_id)  # never raises — SQL errors are swallowed gracefully
 
     # 2. Call KnowledgeBase to embed and upsert synchronously
     try:

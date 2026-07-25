@@ -1,0 +1,92 @@
+# Legilimens — DigitalOcean App Platform Spec
+# Docs: https://docs.digitalocean.com/products/app-platform/reference/app-spec/
+#
+# Deploy with:
+#   doctl apps create --spec .do/app.yaml
+#
+# Or: DigitalOcean Console → Apps → Create App → "From Spec" and paste this file.
+#
+# NOTE: Actian VectorAI DB and Actian Vector SQL are stateful services
+# that must run on a Droplet (they are not available as managed DO services).
+# For App Platform, the backend degrades gracefully:
+#   - Vector search (retrieval) → ⚠️ unavailable (set VECTORAI_HOST to your Droplet IP)
+#   - Analytics SQL             → ⚠️ unavailable (set VECTOR_HOST to your Droplet IP)
+#   - MongoDB auth              → ✅ works (Atlas is cloud-hosted)
+#   - Gemini + ElevenLabs       → ✅ works
+
+name: legilimens
+region: blr   # Bangalore — closest to your team; options: blr, sgp, nyc, ams, sfo
+
+services:
+  # ─── FastAPI Backend ───────────────────────────────────────────────
+  - name: backend
+    dockerfile_path: backend/Dockerfile
+    source_dir: /
+    github:
+      repo: YOUR_GITHUB_ORG/TeamTraction      # ← update this
+      branch: main
+      deploy_on_push: true
+    http_port: 8001
+    instance_count: 1
+    instance_size_slug: professional-xs       # 1 vCPU / 1GB RAM — good for demo
+    health_check:
+      http_path: /health
+      initial_delay_seconds: 60
+      period_seconds: 20
+    envs:
+      - key: VECTORAI_HOST
+        value: "localhost"                    # ← replace with your Droplet IP if using one
+      - key: VECTORAI_PORT
+        value: "6574"
+      - key: VECTOR_HOST
+        value: "localhost"
+      - key: VECTOR_PORT
+        value: "5432"
+      - key: MONGODB_URI
+        value: ""                             # ← set in DO Console (encrypted)
+        type: SECRET
+      - key: MONGODB_DB_NAME
+        value: "legilimens"
+      - key: JWT_SECRET
+        value: ""                             # ← set in DO Console (encrypted)
+        type: SECRET
+      - key: JWT_ALGORITHM
+        value: "HS256"
+      - key: JWT_ACCESS_EXPIRE_MINUTES
+        value: "10080"
+      - key: GEMINI_API_KEY
+        value: ""                             # ← set in DO Console (encrypted)
+        type: SECRET
+      - key: GEMINI_MODEL
+        value: "gemini-2.5-flash"
+      - key: ELEVENLABS_API_KEY
+        value: ""                             # ← set in DO Console (encrypted)
+        type: SECRET
+      - key: ELEVENLABS_VOICE_ID
+        value: "21m00Tcm4TlvDq8ikWAM"
+      - key: ELEVENLABS_MODEL_ID
+        value: "eleven_flash_v2_5"
+      - key: CORS_ORIGINS
+        value: '["${APP_URL}","http://localhost:3000"]'
+
+  # ─── Next.js Frontend ─────────────────────────────────────────────
+  - name: frontend
+    dockerfile_path: frontend/Dockerfile
+    source_dir: /
+    github:
+      repo: YOUR_GITHUB_ORG/TeamTraction      # ← update this
+      branch: main
+      deploy_on_push: true
+    http_port: 3000
+    instance_count: 1
+    instance_size_slug: basic-xs             # 512MB RAM — Next.js standalone is tiny
+    health_check:
+      http_path: /
+      initial_delay_seconds: 30
+    build_command: ""                        # handled by Dockerfile
+    envs:
+      - key: NEXT_PUBLIC_API_URL
+        # Points frontend at the backend service URL within DO App Platform
+        value: "${backend.PUBLIC_URL}"
+      - key: NODE_ENV
+        value: production
