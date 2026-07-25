@@ -200,7 +200,7 @@ async def ingest_chunk(chunk: ChunkIngest, background_tasks: BackgroundTasks) ->
     except Exception as e:
         logger.error("Failed to index chunk in KB: %s", e)
 
-    # 3. Broadcast to dashboards
+    background_tasks.add_task(_embed_and_upsert, chunk, chunk_id)
     background_tasks.add_task(_broadcast_chunk_update, chunk.lecture_id, chunk_id, chunk.topic_node)
 
     logger.info("Ingested chunk %s: topic=%s lecture=%d", chunk_id, chunk.topic_node, chunk.lecture_id)
@@ -209,7 +209,7 @@ async def ingest_chunk(chunk: ChunkIngest, background_tasks: BackgroundTasks) ->
         chunk_id=chunk_id,
         status="stored",
         topic_node=chunk.topic_node,
-        embedded=False,  # Will be True after background task completes
+        embedded=False,
     )
 
 

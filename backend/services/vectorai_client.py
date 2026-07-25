@@ -102,11 +102,12 @@ class VectorAIClient:
 
         client = self._get_client()
 
+        import uuid
         actian_points = []
         for p in points:
             point_id = p["id"]
             if isinstance(point_id, str):
-                point_id = abs(hash(point_id)) % (2**63)
+                point_id = int(uuid.uuid5(uuid.NAMESPACE_DNS, point_id).int & 0x7FFFFFFFFFFFFFFF)
             actian_points.append(
                 PointStruct(
                     id=point_id,

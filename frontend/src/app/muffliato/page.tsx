@@ -19,7 +19,8 @@ import Link from "next/link";
 export default function MuffliatoPage() {
   const { user, loading: authLoading, requireAuth } = useAuth();
   const [showToast, setShowToast] = useState(false);
-  const [lectureId] = useState(1);
+  const [lectureId, setLectureId] = useState(1);
+  const [studentId, setStudentId] = useState("student_x");
   const { sendPing, lastMessage, connected } = useWebSocket(lectureId);
 
   const [analogy, setAnalogy] = useState<{text: string; audioUrl?: string} | null>(null);
@@ -29,14 +30,19 @@ export default function MuffliatoPage() {
   useEffect(() => { requireAuth("student"); }, [requireAuth]);
 
   useEffect(() => {
-    if (!authLoading && user) {
-      if (!localStorage.getItem("legilimens_student_id")) {
-        localStorage.setItem("legilimens_student_id", `student_${Math.random().toString(36).slice(2, 8)}`);
-      }
-    }
-  }, [authLoading, user]);
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      const lid = Number(params.get("lectureId")) || 1;
+      setLectureId(lid);
 
-  const studentId = typeof window !== "undefined" ? localStorage.getItem("legilimens_student_id") || "student_x" : "student_x";
+      let sid = localStorage.getItem("legilimens_student_id");
+      if (!sid && user) {
+        sid = `student_${Math.random().toString(36).slice(2, 8)}`;
+        localStorage.setItem("legilimens_student_id", sid);
+      }
+      setStudentId(sid || "student_x");
+    }
+  }, [user]);
 
   if (authLoading || !user) return <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", color: "#c9a84c", fontSize: "1.5rem" }}>🔮 Verifying...</div>;
 
