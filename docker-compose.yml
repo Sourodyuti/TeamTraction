@@ -67,11 +67,11 @@ services:
     env_file:
       - .env
     ports:
-      - "8000:8000"
+      - "8001:8001"
     volumes:
       # Dev: live-reload the backend source
       - ./backend:/app
-    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+    command: uvicorn main:app --host 0.0.0.0 --port 8001 --reload
     restart: unless-stopped
 
 volumes:

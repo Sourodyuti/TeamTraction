@@ -4,7 +4,7 @@ Production-grade app with:
   - Structured logging
   - CORS middleware (configurable origins)
   - Startup/shutdown lifecycle (DB init, client warmup)
-  - All routers mounted (websocket, asr, retrieval, analytics)
+  - All routers mounted (websocket, asr, retrieval, analytics, recording, transcription)
   - Health check with dependency status
 """
 from __future__ import annotations
@@ -23,7 +23,8 @@ from services.embedder import Embedder
 from services.vectorai_client import VectorAIClient
 from services.vector_client import VectorAnalyticsClient
 from dependencies import set_embedder, set_vectorai, set_analytics
-from routers import websocket, asr, retrieval, analytics
+from routers import websocket, asr, retrieval, analytics, recording, transcription
+from routers.auth import router as auth_router
 
 logger = logging.getLogger(__name__)
 
@@ -71,6 +72,10 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
     logger.info("🔮 Legilimens starting up...")
 
+    # 0. MongoDB (user auth) — fail loudly if URI is missing
+    from services.mongodb_client import connect_mongodb
+    await connect_mongodb()
+
     # 1. Logging
     setup_logging(level="INFO")
     logger.info("Logging configured")
@@ -106,8 +111,8 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         init_confusion_events_table()
         logger.info("Actian Vector connected — confusion_events table ready")
         set_analytics(vector_analytics)
-    except Exception:
-        logger.exception("Failed to connect to Actian Vector — analytics will be degraded")
+    except Exception as e:
+        logger.exception("Failed to connect to Actian Vector — analytics will be degraded: %s", e)
         set_analytics(None)
 
     # Log service health summary
@@ -118,6 +123,8 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
     # Shutdown
     logger.info("Legilimens shutting down...")
+    from services.mongodb_client import close_mongodb
+    await close_mongodb()
     try:
         from dependencies import get_vectorai, get_analytics
         vdb = get_vectorai()
@@ -184,10 +191,13 @@ def create_app() -> FastAPI:
         }
 
     # ─── Mount routers ────────────────────────────────────────────
+    app.include_router(auth_router)
     app.include_router(websocket.router)
     app.include_router(asr.router)
     app.include_router(retrieval.router)
     app.include_router(analytics.router)
+    app.include_router(recording.router)
+    app.include_router(transcription.router)
 
     return app
 

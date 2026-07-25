@@ -9,6 +9,10 @@ export function useRadarData(lectureId: number = 1) {
   const [timelineData, setTimelineData] = useState<TimelinePoint[]>([]);
   const [latencyMs, setLatencyMs] = useState<number | null>(null);
 
+  const [confusionAlert, setConfusionAlert] = useState<{ concept_node: string; count: number; recommendation: string } | null>(null);
+  const [lastAnalogy, setLastAnalogy] = useState<{ concept_node: string; analogy_text: string; audio_url?: string } | null>(null);
+  const [currentTopic, setCurrentTopic] = useState<string | null>(null);
+
   const { lastMessage } = useWebSocket(lectureId, "teacher");
 
   useEffect(() => {
@@ -61,11 +65,34 @@ export function useRadarData(lectureId: number = 1) {
     if (msg.type === "latency_update") {
       setLatencyMs(msg.retrieval_ms ?? msg.total_ms ?? null);
     }
+
+    if (msg.type === "confusion_alert") {
+      setConfusionAlert({
+        concept_node: msg.concept_node,
+        count: msg.count,
+        recommendation: msg.recommendation
+      });
+    }
+
+    if (msg.type === "analogy_ready") {
+      setLastAnalogy({
+        concept_node: msg.concept_node,
+        analogy_text: msg.analogy_text,
+        audio_url: msg.audio_url
+      });
+    }
+
+    if (msg.type === "transcript_update") {
+      setCurrentTopic(msg.topic_node);
+    }
   }, [lastMessage]);
 
   return {
     conceptNodes,
     timelineData,
     latencyMs,
+    confusionAlert,
+    lastAnalogy,
+    currentTopic,
   };
 }

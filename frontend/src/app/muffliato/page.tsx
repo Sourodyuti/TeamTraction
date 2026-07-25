@@ -10,20 +10,40 @@
  *
  * Also receives analogy audio back from Sonorus (Phase 6).
  */
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useWebSocket } from "@/hooks/useWebSocket";
 import { SignalType } from "@/lib/types";
+import { useAuth } from "@/hooks/useAuth";
 import Link from "next/link";
 
 export default function MuffliatoPage() {
+  const { user, loading: authLoading, requireAuth } = useAuth();
   const [studentId] = useState(
     () => `student_${Math.random().toString(36).slice(2, 8)}`
   );
   const [lectureId] = useState(1);
   const { sendPing, lastMessage, connected } = useWebSocket(lectureId);
 
+  const [analogy, setAnalogy] = useState<{text: string; audioUrl?: string} | null>(null);
+  const [avatar, setAvatar] = useState<'cricketer'|'gamer'|'cook'>('cricketer');
+
+  // Guard: student route
+  useEffect(() => { requireAuth("student"); }, [requireAuth]);
+  if (authLoading || !user) return <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", color: "#c9a84c", fontSize: "1.5rem" }}>🔮 Verifying...</div>;
+
+  useEffect(() => {
+    if (lastMessage?.type === 'analogy_ready') {
+      const { analogy_text, audio_url } = lastMessage as any;
+      setAnalogy({ text: analogy_text, audioUrl: audio_url });
+      if (audio_url) {
+        const audio = new Audio(audio_url);
+        audio.play().catch(e => console.error("Auto-play prevented", e));
+      }
+    }
+  }, [lastMessage]);
+
   const handleSignal = (signalType: SignalType) => {
-    sendPing({ student_id: studentId, signal_type: signalType, ts: new Date().toISOString() });
+    sendPing({ student_id: studentId, signal_type: signalType, ts: new Date().toISOString(), avatar });
   };
 
   return (
@@ -66,7 +86,8 @@ export default function MuffliatoPage() {
               type="radio"
               name="avatar"
               value="cricketer"
-              defaultChecked
+              checked={avatar === 'cricketer'}
+              onChange={(e) => setAvatar(e.target.value as any)}
               style={styles.avatarRadio}
             />
             <span style={styles.avatarName}>🏏 Cricketer</span>
@@ -76,6 +97,8 @@ export default function MuffliatoPage() {
               type="radio"
               name="avatar"
               value="gamer"
+              checked={avatar === 'gamer'}
+              onChange={(e) => setAvatar(e.target.value as any)}
               style={styles.avatarRadio}
             />
             <span style={styles.avatarName}>🎮 Gamer</span>
@@ -85,6 +108,8 @@ export default function MuffliatoPage() {
               type="radio"
               name="avatar"
               value="cook"
+              checked={avatar === 'cook'}
+              onChange={(e) => setAvatar(e.target.value as any)}
               style={styles.avatarRadio}
             />
             <span style={styles.avatarName}>👨‍🍳 Cook</span>
@@ -94,7 +119,24 @@ export default function MuffliatoPage() {
 
       {/* Audio player for incoming analogy */}
       <section style={styles.audioSection}>
-        <p style={styles.audioHint}>🔊 Waiting for analogy...</p>
+        {analogy ? (
+          <div style={{ display: "flex", flexDirection: "column", gap: "1rem", alignItems: "center" }}>
+            <p style={{ ...styles.audioHint, color: "var(--gotit-green)", fontWeight: "bold" }}>
+              {analogy.audioUrl ? "🔊 Accio Analogy!" : "🪄 Analogy Received!"}
+            </p>
+            <p style={{ fontStyle: "italic", opacity: 0.9 }}>{analogy.text}</p>
+            {analogy.audioUrl && (
+              <button
+                style={{ ...styles.button, minHeight: "40px", padding: "0.5rem 1rem", fontSize: "1rem" }}
+                onClick={() => new Audio(analogy.audioUrl!).play()}
+              >
+                Replay Audio
+              </button>
+            )}
+          </div>
+        ) : (
+          <p style={styles.audioHint}>🔊 Waiting for analogy...</p>
+        )}
       </section>
 
       {/* Back to landing */}
