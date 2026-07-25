@@ -1,19 +1,13 @@
-"""ASR ingestion router — Whisper transcript → embedding pipeline (Phase 1+2).
+"""ASR ingestion router — Whisper transcript → embedding pipeline (Phase 1).
 
-Accepts transcript chunks from Whisper.cpp (or a pre-recorded transcript),
-embeds them with bge-small-en-v1.5, and upserts into VectorAI DB.
-
-Also updates the `current_chunk` tracker in Actian Vector so that
-WebSocket pings can tag their concept_node correctly.
-
-Endpoints:
-  POST /asr/ingest-chunk   — single chunk, foreground
-  POST /asr/ingest-batch   — multiple chunks, background task for upsert
+Accepts transcript chunks from Whisper.cpp (or the pre-recorded transcript),
+embeds them with bge-small, and upserts into VectorAI DB.
 """
 from __future__ import annotations
 
 import logging
-from typing import Annotated
+import time
+from typing import Any
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 
@@ -25,129 +19,137 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/asr", tags=["asr"])
 
-_CURRENT_CHUNK: dict[int, dict] = {}  # lecture_id → {chunk_id, topic_node, text_preview}
 
-
-# ─── Dependencies ─────────────────────────────────────────────────
+# ─── Dependency injection helpers ─────────────────────────────────
+# These are overridden at app creation time in main.py via app.dependency_overrides
+# or by referencing the module-level singletons directly.
 
 def _get_embedder() -> Embedder:
-    return Embedder()
+    """Lazy import to avoid circular imports; overridden by main.py lifespan."""
+    from main import get_embedder  # noqa: PLC0415
+    return get_embedder()
 
 
 def _get_vectorai() -> VectorAIClient:
-    client = VectorAIClient()
-    if client._client is None:
-        client.connect()
-    return client
+    from main import get_vectorai  # noqa: PLC0415
+    return get_vectorai()
 
 
-# ─── Helpers ──────────────────────────────────────────────────────
+# ─── Helpers ─────────────────────────────────────────────────────
 
-def _embed_and_upsert(chunk: LectureChunk, embedder: Embedder, vectorai: VectorAIClient) -> None:
-    """Embed a chunk and upsert into VectorAI DB. Called sync (or in background)."""
-    vector, emb_ms = embedder.encode_with_latency(chunk.text)
-    logger.debug("Embedded chunk %s (%.1f ms)", chunk.chunk_id, emb_ms)
+def _embed_and_upsert(
+    chunk: LectureChunk,
+    embedder: Embedder,
+    vectorai: VectorAIClient,
+) -> dict[str, Any]:
+    """Core embed → upsert logic (sync, called from both endpoints)."""
+    t0 = time.perf_counter()
+    vectors = embedder.encode(chunk.text)
+    embed_ms = round((time.perf_counter() - t0) * 1000, 1)
 
-    vectorai.upsert_chunks([
-        {
-            "id": chunk.chunk_id,
-            "vector": vector,
-            "payload": {
-                "chunk_id": chunk.chunk_id,
-                "lecture_id": chunk.lecture_id,
-                "text": chunk.text,
-                "topic_node": chunk.topic_node,
-                "subtopic": chunk.subtopic,
-                "difficulty": chunk.difficulty,
-                "source": chunk.source,
-                "ts": chunk.ts,
-            },
-        }
-    ])
-    logger.info("Upserted chunk %s (lecture=%d, topic=%s)", chunk.chunk_id, chunk.lecture_id, chunk.topic_node)
-
-
-def _update_current_chunk(chunk: LectureChunk) -> None:
-    """Track the active concept_node per lecture (in-memory for speed).
-    WebSocket pings read from this to tag events to the right concept.
-    """
-    _CURRENT_CHUNK[chunk.lecture_id] = {
-        "chunk_id": chunk.chunk_id,
-        "topic_node": chunk.topic_node,
-        "text_preview": chunk.text[:128],
-        "ts": chunk.ts,
+    point = {
+        "id": chunk.chunk_id,
+        "vector": vectors[0],
+        "payload": {
+            "lecture_id": chunk.lecture_id,
+            "topic_node": chunk.topic_node,
+            "subtopic": chunk.subtopic,
+            "text": chunk.text,
+            "difficulty": chunk.difficulty,
+            "source": chunk.source,
+            "ts": chunk.ts,
+        },
     }
 
-
-def get_current_chunk(lecture_id: int) -> dict | None:
-    """Return the active chunk for a lecture (used by WebSocket handler)."""
-    return _CURRENT_CHUNK.get(lecture_id)
-
-
-# ─── Endpoints ───────────────────────────────────────────────────
-
-@router.post("/ingest-chunk")
-async def ingest_chunk(
-    chunk: LectureChunk,
-    embedder: Annotated[Embedder, Depends(_get_embedder)] = None,
-    vectorai: Annotated[VectorAIClient, Depends(_get_vectorai)] = None,
-) -> dict:
-    """Ingest a single transcript chunk: embed → upsert to VectorAI DB.
-
-    Updates the in-memory current_chunk tracker so WebSocket pings
-    can tag confusion events to this concept_node.
-    """
-    try:
-        _embed_and_upsert(chunk, embedder, vectorai)
-        _update_current_chunk(chunk)
-    except Exception as exc:
-        logger.exception("Failed to ingest chunk %s", chunk.chunk_id)
-        raise HTTPException(status_code=503, detail=f"Ingest failed: {exc}") from exc
+    t1 = time.perf_counter()
+    vectorai.upsert_chunks([point])
+    upsert_ms = round((time.perf_counter() - t1) * 1000, 1)
 
     return {
         "status": "ok",
         "chunk_id": chunk.chunk_id,
         "topic_node": chunk.topic_node,
-        "lecture_id": chunk.lecture_id,
+        "latency_ms": {"embedding": embed_ms, "upsert": upsert_ms},
     }
+
+
+def _batch_upsert(
+    chunks: list[LectureChunk],
+    embedder: Embedder,
+    vectorai: VectorAIClient,
+) -> None:
+    """Background task: embed all texts, upsert in a single call."""
+    texts = [c.text for c in chunks]
+    t0 = time.perf_counter()
+    all_vectors = embedder.encode(texts)
+    embed_ms = round((time.perf_counter() - t0) * 1000, 1)
+
+    points = [
+        {
+            "id": chunk.chunk_id,
+            "vector": vec,
+            "payload": {
+                "lecture_id": chunk.lecture_id,
+                "topic_node": chunk.topic_node,
+                "subtopic": chunk.subtopic,
+                "text": chunk.text,
+                "difficulty": chunk.difficulty,
+                "source": chunk.source,
+                "ts": chunk.ts,
+            },
+        }
+        for chunk, vec in zip(chunks, all_vectors)
+    ]
+
+    t1 = time.perf_counter()
+    vectorai.upsert_chunks(points)
+    upsert_ms = round((time.perf_counter() - t1) * 1000, 1)
+    logger.info(
+        "Batch ingest: %d chunks embedded in %.1fms, upserted in %.1fms",
+        len(chunks), embed_ms, upsert_ms,
+    )
+
+
+# ─── Endpoints ────────────────────────────────────────────────────
+
+@router.post("/ingest-chunk")
+async def ingest_chunk(
+    chunk: LectureChunk,
+    embedder: Embedder = Depends(_get_embedder),
+    vectorai: VectorAIClient = Depends(_get_vectorai),
+) -> dict:
+    """Ingest a single transcript chunk: embed → upsert to VectorAI DB.
+
+    Returns chunk_id, topic_node, and per-step latency.
+    """
+    if embedder is None or vectorai is None:
+        raise HTTPException(status_code=503, detail="AI services not available")
+    try:
+        return _embed_and_upsert(chunk, embedder, vectorai)
+    except Exception as exc:
+        logger.exception("ingest-chunk failed for chunk_id=%s", chunk.chunk_id)
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
 @router.post("/ingest-batch")
 async def ingest_batch(
     chunks: list[LectureChunk],
     background_tasks: BackgroundTasks,
-    embedder: Annotated[Embedder, Depends(_get_embedder)] = None,
-    vectorai: Annotated[VectorAIClient, Depends(_get_vectorai)] = None,
+    embedder: Embedder = Depends(_get_embedder),
+    vectorai: VectorAIClient = Depends(_get_vectorai),
 ) -> dict:
-    """Bulk-ingest multiple chunks in a background task.
+    """Bulk-ingest multiple chunks. Embedding + upsert run in a background task.
 
-    Returns immediately (202 Accepted) and processes in background.
-    The last chunk in the list sets the current_chunk for the lecture.
+    Returns immediately so the HTTP client doesn't wait on 50+ embeddings.
     """
+    if embedder is None or vectorai is None:
+        raise HTTPException(status_code=503, detail="AI services not available")
     if not chunks:
-        return {"status": "ok", "count": 0, "message": "No chunks to ingest"}
+        return {"status": "ok", "count": 0, "message": "no chunks provided"}
 
-    def _run_batch():
-        for chunk in chunks:
-            try:
-                _embed_and_upsert(chunk, embedder, vectorai)
-                _update_current_chunk(chunk)
-            except Exception:
-                logger.exception("Batch ingest failed for chunk %s", chunk.chunk_id)
-
-    background_tasks.add_task(_run_batch)
-
+    background_tasks.add_task(_batch_upsert, chunks, embedder, vectorai)
     return {
         "status": "accepted",
         "count": len(chunks),
-        "message": "Batch ingest queued as background task",
+        "message": f"{len(chunks)} chunks queued for embedding + upsert",
     }
-
-
-@router.get("/current-chunk/{lecture_id}")
-async def current_chunk(lecture_id: int) -> dict:
-    """Return the currently active chunk for a lecture (for debugging / ping tagging)."""
-    chunk = get_current_chunk(lecture_id)
-    if not chunk:
-        raise HTTPException(status_code=404, detail=f"No active chunk for lecture {lecture_id}")
-    return chunk
