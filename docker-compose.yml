@@ -1,28 +1,30 @@
 # Legilimens — Docker Compose
 # Brings up: Actian VectorAI DB (on-prem retrieval) + Actian Vector Community (columnar analytics) + FastAPI orchestrator.
 #
-# ⚠️ TODO VERIFY: The exact Actian Docker image names below must be confirmed against Actian's
-#    official documentation before first `docker-compose up`. The ports (6573 REST / 6574 gRPC for
-#    VectorAI DB) come from the blueprint; the image tags are placeholders to be verified.
-#    Docs to check: Actian VectorAI DB Docker quickstart + `actian/vector5.0:community` for Vector.
+# Actian VectorAI DB: actian/vectorai:latest (Community Edition with 30-day trial)
+#   - REST on 6573, gRPC on 6574, LocalUI on 6575
+#   - License key: QWGQK-T9M8V-GP42Q-M39KB-7GBJ3-9FKJT
+# Actian Vector: actian/vector5.0:community (columnar SQL)
 
 services:
   # ───────────────────────────────────────────────────────────────
   # Actian VectorAI DB — the retrieval brain (on-prem, air-gapped-capable)
-  # REST on 6573, gRPC on 6574. No auth for local dev.
+  # REST on 6573, gRPC on 6574, LocalUI on 6575
   # ───────────────────────────────────────────────────────────────
   vectorai-db:
-    # TODO VERIFY: confirm exact image name + tag from Actian docs
     image: actian/vectorai:latest
     container_name: legilimens-vectorai
     ports:
-      - "6573:6573"   # REST
+      - "6573:6573"   # REST API
       - "6574:6574"   # gRPC (Python SDK default)
+      - "6575:6575"   # LocalUI (http://localhost:6575)
+    environment:
+      - ACTIAN_VECTORAI_ACCEPT_EULA=YES
+      - ACTIAN_VECTORAI_LICENSE_KEY=QWGQK-T9M8V-GP42Q-M39KB-7GBJ3-9FKJT
     volumes:
-      - vectorai-data:/vectorai/data
+      - vectorai-data:/var/lib/actian-vectorai
     restart: unless-stopped
     healthcheck:
-      # TODO VERIFY: replace with a real VectorAI DB health endpoint once confirmed
       test: ["CMD", "curl", "-f", "http://localhost:6573/healthz"]
       interval: 10s
       timeout: 5s
@@ -30,13 +32,13 @@ services:
 
   # ───────────────────────────────────────────────────────────────
   # Actian Vector (Analytics Engine) — columnar SQL for confusion time-series.
-  # Community image per blueprint §5.
+  # Community image per blueprint.
   # ───────────────────────────────────────────────────────────────
   actian-vector:
     image: actian/vector5.0:community
     container_name: legilimens-vector
     ports:
-      # TODO VERIFY: confirm the SQL access port Actian Vector exposes by default
+      # Default SQL access port for Actian Vector
       - "5432:5432"
     volumes:
       - vector-data:/actian/vector/data
@@ -61,7 +63,7 @@ services:
       VECTORAI_PORT: "6574"
       VECTOR_HOST: actian-vector
       VECTOR_PORT: "5432"
-      # GEMINI_API_KEY / ELEVENLABS_API_KEY loaded from .env (see .env.example)
+      # GEMINI_API_KEY / ELEVENLABS_API_KEY loaded from .env
     env_file:
       - .env
     ports:
