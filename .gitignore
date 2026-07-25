@@ -61,11 +61,15 @@ frontend/out/
 frontend/build/
 backend/dist/
 
-# Model files (large, downloaded at runtime)
-backend/models/
-backend/models/ggml-*.bin
+# ML model binaries (large, downloaded at runtime) — NOT the Python models/ package
 *.bin
 *.gguf
+backend/**/ggml-*.bin
+whisper.cpp/models/
+# Sentence-transformers / HuggingFace model cache
+backend/.sentence_transformers/
+~/.cache/huggingface/
+~/.cache/torch/
 
 # Embedding cache
 backend/.sentence_transformers/
