@@ -1,100 +1,194 @@
-"""Tests for the WebSocket ping handler (Phase 2)."""
-from __future__ import annotations
-
-import time
-from unittest.mock import MagicMock, patch
-
+"""Tests for the WebSocket hub — ConnectionManager, ThresholdTracker, OfflineQueue."""
+import asyncio
+import json
 import pytest
+from unittest.mock import AsyncMock, MagicMock, patch
+
+from routers.websocket import (
+    ConnectionManager,
+    ThresholdTracker,
+    OfflineQueue,
+    manager,
+    threshold_tracker,
+    offline_queue,
+)
 
 
-class TestThresholdLogic:
-    """Unit-test the threshold helpers without a live WebSocket."""
+class TestConnectionManager:
+    def test_connect_adds_connection(self):
+        """Connecting a student adds them to the lecture pool."""
+        mgr = ConnectionManager()
+        ws = MagicMock()
+        mgr.connect(1, "student_1", ws)
 
-    def setup_method(self):
-        """Reset module-level state between tests."""
-        from routers import websocket as ws_module
-        ws_module._lost_window.clear()
-        ws_module._last_accio.clear()
+        assert "student_1" in mgr._connections[1]
+        assert len(mgr.get_online_students(1)) == 1
 
-    def test_record_lost_adds_to_window(self):
-        """_record_lost should add an entry to the sliding window."""
-        from routers.websocket import _record_lost, _lost_window
+    def test_connect_multiple_students(self):
+        mgr = ConnectionManager()
+        mgr.connect(1, "s1", MagicMock())
+        mgr.connect(1, "s2", MagicMock())
+        mgr.connect(2, "s3", MagicMock())  # Different lecture
 
-        _record_lost(1, "chain_rule")
-        assert len(_lost_window[1]) == 1
+        assert len(mgr.get_online_students(1)) == 2
+        assert len(mgr.get_online_students(2)) == 1
 
-    def test_threshold_not_met_below_count(self):
-        """_should_trigger_accio returns False when count < threshold."""
-        from routers.websocket import _record_lost, _should_trigger_accio
+    def test_disconnect_removes_student(self):
+        mgr = ConnectionManager()
+        ws = MagicMock()
+        mgr.connect(1, "s1", ws)
+        mgr.disconnect(1, "s1")
 
-        _record_lost(2, "backprop")  # Only 1 — below threshold of 2
-        assert not _should_trigger_accio(2, "backprop")
+        assert "s1" not in mgr._connections.get(1, {})
+        assert len(mgr.get_online_students(1)) == 0
 
-    def test_threshold_met(self):
-        """_should_trigger_accio returns True when ≥2 lost signals in window."""
-        from routers.websocket import _record_lost, _should_trigger_accio
+    def test_disconnect_cleans_empty_lecture(self):
+        mgr = ConnectionManager()
+        mgr.connect(1, "s1", MagicMock())
+        mgr.disconnect(1, "s1")
 
-        _record_lost(3, "chain_rule")
-        _record_lost(3, "chain_rule")
-        assert _should_trigger_accio(3, "chain_rule")
+        # Lecture key should be removed when empty
+        assert 1 not in mgr._connections
 
-    def test_threshold_cooldown_prevents_double_trigger(self):
-        """After triggering, the same concept should not trigger again within cooldown."""
-        from routers.websocket import _record_lost, _should_trigger_accio, _last_accio
+    def test_get_online_students_isolation(self):
+        """Lectures are isolated — students in one don't appear in another."""
+        mgr = ConnectionManager()
+        mgr.connect(1, "s1", MagicMock())
+        mgr.connect(2, "s2", MagicMock())
 
-        _record_lost(4, "loss")
-        _record_lost(4, "loss")
-        first = _should_trigger_accio(4, "loss")   # Should trigger
-        second = _should_trigger_accio(4, "loss")  # Cooldown — should NOT trigger
-        assert first is True
-        assert second is False
+        assert "s2" not in mgr.get_online_students(1)
+        assert "s1" not in mgr.get_online_students(2)
 
-    def test_window_evicts_old_signals(self):
-        """Signals older than 20s should be evicted."""
-        from routers import websocket as ws_module
+    @pytest.mark.asyncio
+    async def test_broadcast_to_empty_lecture(self):
+        """Broadcasting to an empty lecture doesn't error."""
+        mgr = ConnectionManager()
+        # No connections for lecture 999
+        await mgr.broadcast_to_lecture(999, {"type": "test"})  # Should not raise
 
-        now = time.monotonic()
-        ws_module._lost_window[5].append((now - 25.0, "vanishing_gradient"))  # stale
-        ws_module._lost_window[5].append((now - 25.0, "vanishing_gradient"))  # stale
+    @pytest.mark.asyncio
+    async def test_send_to_student_delivers(self):
+        mgr = ConnectionManager()
+        ws = AsyncMock()
+        ws.send_text = AsyncMock()
+        mgr.connect(1, "s1", ws)
 
-        # Recording a fresh signal should evict the stale ones
-        ws_module._record_lost(5, "something_else")
+        delivered = await mgr.send_to_student(1, "s1", {"type": "test"})
+        assert delivered is True
+        ws.send_text.assert_called_once()
+        sent_data = json.loads(ws.send_text.call_args[0][0])
+        assert sent_data["type"] == "test"
 
-        # Only the fresh signal should remain
-        remaining = list(ws_module._lost_window[5])
-        assert all((now - ts) < ws_module._LOST_WINDOW_SEC for ts, _ in remaining)
+    @pytest.mark.asyncio
+    async def test_send_to_missing_student_returns_false(self):
+        mgr = ConnectionManager()
+        delivered = await mgr.send_to_student(1, "nonexistent", {"type": "test"})
+        assert delivered is False
 
-    def test_different_concepts_have_independent_thresholds(self):
-        """Two different concept_nodes share the same lecture window but are counted independently."""
-        from routers.websocket import _record_lost, _should_trigger_accio
+    @pytest.mark.asyncio
+    async def test_send_to_student_drops_dead_connection(self):
+        mgr = ConnectionManager()
+        ws = AsyncMock()
+        ws.send_text = AsyncMock(side_effect=RuntimeError("Connection closed"))
+        mgr.connect(1, "s1", ws)
 
-        _record_lost(6, "chain_rule")
-        _record_lost(6, "chain_rule")
-        _record_lost(6, "backprop")  # Only 1 backprop — below threshold
+        delivered = await mgr.send_to_student(1, "s1", {"type": "test"})
+        assert delivered is False
+        assert "s1" not in mgr._connections.get(1, {})
 
-        assert _should_trigger_accio(6, "chain_rule")     # Should trigger
-        # Reset so cooldown doesn't affect next check
-        assert not _should_trigger_accio(6, "backprop")   # Should NOT trigger
 
-    def test_ping_writes_to_correct_concept_node(self):
-        """handle_ping should tag the event to the current_chunk's topic_node."""
-        import asyncio
-        from unittest.mock import AsyncMock
-        from routers.websocket import handle_ping
+class TestThresholdTracker:
+    def _make_tracker(self, threshold=2, window=20.0, cooldown=45.0):
+        return ThresholdTracker(
+            threshold=threshold,
+            window_seconds=window,
+            cooldown_seconds=cooldown,
+        )
 
-        mock_ws = AsyncMock()
+    def test_single_lost_does_not_fire(self):
+        """One student lost doesn't cross threshold."""
+        tt = self._make_tracker(threshold=2)
+        fired = tt.record_lost(1, "chain_rule", "s1")
+        assert fired is False
 
-        with patch("routers.asr.get_current_chunk", return_value={"topic_node": "loss", "chunk_id": "c1", "text_preview": "The loss measures error."}):
-            with patch("routers.websocket._write_event", new_callable=AsyncMock):
-                with patch("routers.websocket.broadcast_to_lecture", new_callable=AsyncMock) as mock_broadcast:
-                    asyncio.run(handle_ping(
-                        websocket=mock_ws,
-                        lecture_id=99,
-                        data={"type": "ping", "student_id": "s42", "signal_type": "lost"},
-                    ))
+    def test_two_unique_students_fire(self):
+        """Two unique students lost on same node in window → fires."""
+        tt = self._make_tracker(threshold=2)
+        tt.record_lost(1, "chain_rule", "s1")
+        fired = tt.record_lost(1, "chain_rule", "s2")
+        assert fired is True
 
-        # Broadcast should have been called with concept_node = 'loss'
-        call_args = mock_broadcast.call_args
-        assert call_args is not None
-        broadcast_msg = call_args[0][1]
-        assert broadcast_msg["concept_node"] == "loss"
+    def test_same_student_does_not_fire(self):
+        """Same student pressing twice doesn't fire (need unique students)."""
+        tt = self._make_tracker(threshold=2)
+        tt.record_lost(1, "chain_rule", "s1")
+        fired = tt.record_lost(1, "chain_rule", "s1")
+        assert fired is False
+
+    def test_different_nodes_dont_cross(self):
+        """Losses on different concept nodes are tracked independently."""
+        tt = self._make_tracker(threshold=2)
+        tt.record_lost(1, "chain_rule", "s1")
+        tt.record_lost(1, "loss_func", "s2")
+        assert tt.record_lost(1, "loss_func", "s3") is True
+        assert tt.record_lost(1, "chain_rule", "s3") is True  # Now 2 unique on chain_rule
+
+    def test_cooldown_prevents_refire(self):
+        """After firing, same node can't re-fire within cooldown."""
+        tt = self._make_tracker(threshold=2, cooldown=999.0)  # Very long cooldown
+        tt.record_lost(1, "chain_rule", "s1")
+        tt.record_lost(1, "chain_rule", "s2")  # Fires
+
+        # Rapidly add more students — should not fire due to cooldown
+        fired_again = tt.record_lost(1, "chain_rule", "s3")
+        assert fired_again is False
+
+    def test_reset_lecture(self):
+        """Reset clears all tracking for a lecture."""
+        tt = self._make_tracker(threshold=2)
+        tt.record_lost(1, "chain_rule", "s1")
+        tt.reset_lecture(1)
+
+        # After reset, need 2 new pings to fire again
+        assert tt.record_lost(1, "chain_rule", "s2") is False
+        assert tt.record_lost(1, "chain_rule", "s3") is True
+
+    def test_window_pruning(self):
+        """Old pings outside the window are pruned."""
+        import time
+        tt = self._make_tracker(threshold=2, window=0.1)  # 100ms window
+        tt.record_lost(1, "chain_rule", "s1")
+
+        # Wait for window to expire
+        time.sleep(0.15)
+
+        # s2 alone shouldn't fire because s1 was pruned
+        fired = tt.record_lost(1, "chain_rule", "s2")
+        assert fired is False
+
+
+class TestOfflineQueue:
+    @pytest.mark.asyncio
+    async def test_enqueue_and_flush(self):
+        q = OfflineQueue()
+        await q.enqueue({"student_id": "s1"})
+        await q.enqueue({"student_id": "s2"})
+
+        assert q.pending == 2
+        items = await q.flush()
+        assert len(items) == 2
+        assert items[0]["student_id"] == "s1"
+        assert q.pending == 0
+
+    @pytest.mark.asyncio
+    async def test_flush_empty_returns_empty(self):
+        q = OfflineQueue()
+        items = await q.flush()
+        assert items == []
+
+    @pytest.mark.asyncio
+    async def test_pending_count(self):
+        q = OfflineQueue()
+        assert q.pending == 0
+        await q.enqueue({"a": 1})
+        assert q.pending == 1

@@ -8,44 +8,44 @@
 
 ## Phase 0 — Foundation & Scaffolding (Hours 0–2)
 
-- [ ] `npm install` succeeds, `npm run dev` boots on `localhost:3000`
-- [ ] `src/lib/types.ts`: all TypeScript types matching BE lead's Pydantic schemas (mirror exactly)
-- [ ] `src/lib/api.ts`: REST client with all endpoint URLs (health, top-moments, density, accio)
-- [ ] `frontend/.env.local`: `NEXT_PUBLIC_API_URL=http://localhost:8000`
+- [x] `npm install` succeeds, `npm run dev` boots on `localhost:3000`
+- [x] `src/lib/types.ts`: all TypeScript types matching BE lead's Pydantic schemas (mirror exactly)
+- [x] `src/lib/api.ts`: REST client with all endpoint URLs (health, top-moments, density, accio)
+- [x] `frontend/.env.local`: `NEXT_PUBLIC_API_URL=http://localhost:8000`
 - [ ] PWA manifest `public/manifest.json` (name, icons, theme color, installable)
-- [ ] `src/app/layout.tsx` + `globals.css`: base Hogwarts theme (dark bg, gold accents, serif headers)
+- [x] `src/app/layout.tsx` + `globals.css`: base Hogwarts theme (dark bg, gold accents, serif headers)
 - [ ] **Exit gate:** Next.js boots, pages render, `npm run typecheck` passes ✅
 
 ---
 
 ## Phase 2 — Capture Layer / Muffliato PWA (Hours 4–7)
 
-- [ ] `src/app/page.tsx`: Muffliato landing — big 🪄 / ✅ / ⏩ buttons, mobile-first, thumb-friendly
-- [ ] `src/hooks/useWebSocket.ts`: robust reconnect with exponential backoff (max 5s)
-- [ ] `sendPing({student_id, signal_type})` sends `{"type": "ping", ...}` over WS
+- [x] `src/app/page.tsx`: Muffliato landing — big 🪄 / ✅ / ⏩ buttons, mobile-first, thumb-friendly
+- [x] `src/hooks/useWebSocket.ts`: robust reconnect with exponential backoff (max 5s)
+- [x] `sendPing({student_id, signal_type})` sends `{"type": "ping", ...}` over WS
 - [ ] Visual feedback on button press (ripple animation, color flash)
-- [ ] Connection status indicator (🟢 / 🔴)
+- [x] Connection status indicator (🟢 / 🔴)
 - [ ] Avatar picker UI: cricketer / gamer / cook (stores in localStorage, sent with pings)
-- [ ] Student ID generated on first load, persisted in localStorage
+- [x] Student ID generated on first load, persisted in localStorage
 - [ ] **Exit gate:** phone button → WebSocket ping sent + status shows connected ✅
 
 ---
 
 ## Phase 3 — Radar Viz / Marauder's Radar (Hours 7–9)
 
-- [ ] `src/components/radar/RadarHeatmap.tsx`: D3 radial heatmap
-  - [ ] Concept nodes arranged radially in a circle
-  - [ ] Arc size = node weight, color intensity = confusion density (green → amber → red)
-  - [ ] Smooth D3 transitions on data updates
-  - [ ] Node labels + hover tooltip
-  - [ ] Center: lecture title + live student count
-- [ ] `src/components/timeline/Timeline.tsx`: Recharts line chart
-  - [ ] X-axis: lecture time, Y-axis: confusion density 0–100%
-  - [ ] Red dashed threshold line where Accio fires (≥0.25)
-  - [ ] Tooltip showing exact density + timestamp
-- [ ] `src/hooks/useRadarData.ts`: shapes WS `radar_update` messages into ConceptNode[] + TimelinePoint[]
-- [ ] `src/app/dashboard/page.tsx`: teacher dashboard shell — radar + timeline + latency badge
-- [ ] Live latency badge: "edge retrieval: 38ms · 0 cloud calls" (reads `latency_update` WS messages)
+- [x] `src/components/radar/RadarHeatmap.tsx`: D3 radial heatmap
+  - [x] Concept nodes arranged radially in a circle
+  - [x] Arc size = node weight, color intensity = confusion density (green → amber → red)
+  - [x] Smooth D3 transitions on data updates
+  - [x] Node labels + hover tooltip
+  - [x] Center: lecture title + live student count
+- [x] `src/components/timeline/Timeline.tsx`: Recharts line chart
+  - [x] X-axis: lecture time, Y-axis: confusion density 0–100%
+  - [x] Red dashed threshold line where Accio fires (≥0.25)
+  - [x] Tooltip showing exact density + timestamp
+- [x] `src/hooks/useRadarData.ts`: shapes WS `radar_update` messages into ConceptNode[] + TimelinePoint[]
+- [x] `src/app/dashboard/page.tsx`: teacher dashboard shell — radar + timeline + latency badge
+- [x] Live latency badge: "edge retrieval: 38ms · 0 cloud calls" (reads `latency_update` WS messages)
 - [ ] **Exit gate:** two "I'm lost" presses visibly flare the radar within ~1s ✅
 
 ---

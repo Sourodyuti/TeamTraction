@@ -1,0 +1,25 @@
+{
+  "name": "Muffliato",
+  "short_name": "Muffliato",
+  "description": "Student confusion signaling for Legilimens classroom radar",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#1a0f2e",
+  "theme_color": "#d3a625",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": ["education", "utilities"]
+}

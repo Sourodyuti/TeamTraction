@@ -4,6 +4,7 @@ import { ScrollReveal } from "@/components/ui/ScrollReveal";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { FloatingBackground } from "@/components/landing/FloatingBackground";
+import Link from "next/link";
 import styles from "./Hero.module.css";
 
 export function Hero() {
@@ -53,12 +54,14 @@ export function Hero() {
 
         <ScrollReveal direction="up" delay={600}>
           <div className={styles.ctaGroup}>
-            <Button size="lg" variant="gold" spell="marauders" className={styles.ctaPrimary}>
-              View Live Demo
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" aria-hidden="true">
-                <path d="M5 12h14M12 5l7 7-7 7" />
-              </svg>
-            </Button>
+            <Link href="/muffliato" passHref legacyBehavior>
+              <Button size="lg" variant="gold" spell="marauders" className={styles.ctaPrimary}>
+                View Live Demo
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" aria-hidden="true">
+                  <path d="M5 12h14M12 5l7 7-7 7" />
+                </svg>
+              </Button>
+            </Link>
             <Button size="lg" variant="ghost" className={styles.ctaSecondary}>
               Read the Blueprint
             </Button>

@@ -15,15 +15,15 @@
 
 ## Shared Checklist (everyone)
 
-- [ ] All laptops have Python 3.11 + Node 20 + Docker installed
-- [ ] GitHub repo cloned, your lane branch created
-- [ ] `GOAL.md` and `PLAN.md` read by everyone before day 1
+- [x] All laptops have Python 3.11 + Node 20 + Docker installed
+- [x] GitHub repo cloned, your lane branch created
+- [x] `GOAL.md` and `PLAN.md` read by everyone before day 1
 
 ## Phase Exit Gates (track overall progress here)
 
-- [ ] Phase 0 — Foundation: both Actian DBs respond to a smoke query
-- [ ] Phase 1 — Data: `search_similar()` returns sensible hits
-- [ ] Phase 2 — Capture: phone button → DB row + broadcast
+- [x] Phase 0 — Foundation: both Actian DBs respond to a smoke query
+- [x] Phase 1 — Data: `search_similar()` returns sensible hits
+- [x] Phase 2 — Capture: phone button → DB row + broadcast
 - [ ] Phase 3 — Radar: two pings flare the radar within ~1s
 - [ ] Phase 4 — Retrieval: <50ms measured 🎯
 - [ ] Phase 5 — Gemini: analogy reads naturally for ≥2 avatars

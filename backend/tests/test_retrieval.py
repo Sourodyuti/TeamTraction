@@ -1,245 +1,121 @@
-"""Tests for the Accio Analogy retrieval router (Phase 4+5)."""
-from __future__ import annotations
-
-from unittest.mock import MagicMock, patch
-
+"""Tests for the retrieval router — pipeline orchestration."""
 import pytest
-from fastapi.testclient import TestClient
+from unittest.mock import AsyncMock, MagicMock, patch
 
-from models.schemas import InterestAvatar
-
-
-def _make_app():
-    """Import the FastAPI app after patching heavy services."""
-    from main import create_app
-    return create_app()
+from models.schemas import AnalogyResponse, InterestAvatar
+from routers.retrieval import run_retrieval_pipeline
 
 
-class TestRetrievalRouter:
-    """Test the /retrieval/accio endpoint."""
-
-    def _client(self):
-        """Return a TestClient with all cloud services mocked."""
-        app = _make_app()
-        return TestClient(app, raise_server_exceptions=False)
-
-    def _mock_deps(self):
-        """Patch embedder, vectorai, gemini, elevenlabs, offline_cache."""
+class TestRunRetrievalPipeline:
+    @pytest.mark.asyncio
+    async def test_full_pipeline_success(self):
+        """All services available → full analogy with audio URL."""
+        # Mock embedder
         mock_embedder = MagicMock()
-        mock_embedder.encode_with_latency.return_value = ([0.1] * 384, 12.5)
+        mock_embedder.encode_with_latency.return_value = ([0.1] * 384, 12.0)
 
-        mock_vectorai = MagicMock()
-        mock_vectorai._client = MagicMock()  # so connect() is skipped
-        mock_vectorai.search_similar.return_value = [
-            {
-                "id": 1,
-                "score": 0.92,
-                "payload": {
-                    "text": "The chain rule multiplies gradients layer by layer.",
-                    "topic_node": "chain_rule",
-                    "source": "lecture",
-                },
-                "latency_ms": 8.0,
-            }
+        # Mock vectorai
+        mock_vdb = MagicMock()
+        mock_vdb.search_similar.return_value = [
+            {"text": "The chain rule is like passing a baton in a relay race.",
+             "topic_node": "chain_rule", "source": "textbook", "score": 0.92}
+        ]
+        mock_vdb.health.return_value = True
+
+        # Mock gemini
+        mock_gemini_response = ("Like cricket: each layer is a batsman passing the strike to the next.", 450.0)
+
+        # Mock elevenlabs
+        mock_audio_url = "https://api.elevenlabs.io/v1/audio/abc123.mp3"
+
+        with patch("routers.retrieval.get_embedder", return_value=mock_embedder):
+            with patch("routers.retrieval.get_vectorai", return_value=mock_vdb):
+                with patch("services.gemini_client.GeminiClient") as MockGemini:
+                    with patch("services.elevenlabs_client.ElevenLabsClient") as MockEleven:
+                        MockGemini.return_value.rewrite_analogy.return_value = mock_gemini_response
+                        MockEleven.return_value.get_audio_url.return_value = mock_audio_url
+
+                        result = await run_retrieval_pipeline(
+                            concept_node="chain_rule",
+                            chunk_text="The chain rule multiplies gradients layer by layer",
+                            avatar=InterestAvatar.CRICKETER,
+                        )
+
+        assert isinstance(result, AnalogyResponse)
+        assert result.concept_node == "chain_rule"
+        assert result.original_text == "The chain rule is like passing a baton in a relay race."
+        assert "cricket" in result.analogy_text.lower()
+        assert result.audio_url == mock_audio_url
+        assert result.latency_ms["embedding"] == 12.0
+        assert result.latency_ms["gemini"] == 450.0
+
+    @pytest.mark.asyncio
+    async def test_gemini_fallback_to_raw_text(self):
+        """Gemini down → returns raw retrieved text, no crash."""
+        mock_embedder = MagicMock()
+        mock_embedder.encode_with_latency.return_value = ([0.1] * 384, 10.0)
+
+        mock_vdb = MagicMock()
+        mock_vdb.search_similar.return_value = [
+            {"text": "Raw explanation text", "topic_node": "loss", "source": "lecture", "score": 0.85}
         ]
 
-        mock_gemini = MagicMock()
-        mock_gemini.rewrite_analogy.return_value = (
-            "Think of it like fielders passing the ball backward through the chain.",
-            45.2,
-        )
+        with patch("routers.retrieval.get_embedder", return_value=mock_embedder):
+            with patch("routers.retrieval.get_vectorai", return_value=mock_vdb):
+                with patch("services.gemini_client.GeminiClient") as MockGemini:
+                    MockGemini.return_value.rewrite_analogy.side_effect = Exception("Gemini timeout")
 
-        mock_elevenlabs = MagicMock()
-        mock_elevenlabs.text_to_speech.return_value = (b"fake_audio", 320.0)
+                    with patch("services.elevenlabs_client.ElevenLabsClient") as MockEleven:
+                        MockEleven.return_value.get_audio_url.side_effect = Exception("ElevenLabs down")
 
-        return mock_embedder, mock_vectorai, mock_gemini, mock_elevenlabs
+                        result = await run_retrieval_pipeline(
+                            concept_node="loss",
+                            chunk_text="Loss function measures error",
+                            avatar=InterestAvatar.GAMER,
+                        )
 
-    def test_accio_returns_analogy_response(self):
-        """POST /retrieval/accio should return a valid AnalogyResponse."""
-        from routers.retrieval import (
-            _get_embedder, _get_vectorai, _get_gemini, _get_elevenlabs,
-        )
-        from main import create_app
+        # Should return the raw retrieved text as analogy
+        assert result.analogy_text == "Raw explanation text"
+        assert result.audio_url is None
+        assert result.latency_ms["gemini"] == 0.0
 
-        app = create_app()
-        mock_e, mock_v, mock_g, mock_el = self._mock_deps()
+    @pytest.mark.asyncio
+    async def test_empty_retrieval_uses_chunk_text(self):
+        """No hits from VectorAI → uses the chunk text itself."""
+        mock_embedder = MagicMock()
+        mock_embedder.encode_with_latency.return_value = ([0.1] * 384, 8.0)
 
-        app.dependency_overrides[_get_embedder] = lambda: mock_e
-        app.dependency_overrides[_get_vectorai] = lambda: mock_v
-        app.dependency_overrides[_get_gemini] = lambda: mock_g
-        app.dependency_overrides[_get_elevenlabs] = lambda: mock_el
+        mock_vdb = MagicMock()
+        mock_vdb.search_similar.return_value = []  # Empty results
 
-        client = TestClient(app, raise_server_exceptions=True)
-        resp = client.post(
-            "/retrieval/accio",
-            params={"concept_node": "chain_rule", "chunk_text": "Backprop uses the chain rule."},
-        )
-        assert resp.status_code == 200
-        body = resp.json()
-        assert body["concept_node"] == "chain_rule"
-        assert "analogy_text" in body
-        assert "latency_ms" in body
+        with patch("routers.retrieval.get_embedder", return_value=mock_embedder):
+            with patch("routers.retrieval.get_vectorai", return_value=mock_vdb):
+                with patch("services.gemini_client.GeminiClient") as MockGemini:
+                    MockGemini.return_value.rewrite_analogy.return_value = ("Analogy", 100.0)
 
-    def test_accio_embedding_failure_falls_back_to_cache(self):
-        """If embedding fails, /accio should return a fallback (not 500)."""
-        from routers.retrieval import _get_embedder, _get_vectorai, _get_gemini, _get_elevenlabs
-        from main import create_app
+                    with patch("services.elevenlabs_client.ElevenLabsClient") as MockEleven:
+                        MockEleven.return_value.get_audio_url.return_value = None
 
-        app = create_app()
-        mock_e = MagicMock()
-        mock_e.encode_with_latency.side_effect = RuntimeError("model not loaded")
-        _, mock_v, mock_g, mock_el = self._mock_deps()
+                        result = await run_retrieval_pipeline(
+                            concept_node="unknown",
+                            chunk_text="The chunk text itself",
+                            avatar=InterestAvatar.COOK,
+                        )
 
-        app.dependency_overrides[_get_embedder] = lambda: mock_e
-        app.dependency_overrides[_get_vectorai] = lambda: mock_v
-        app.dependency_overrides[_get_gemini] = lambda: mock_g
-        app.dependency_overrides[_get_elevenlabs] = lambda: mock_el
+        assert result.original_text == "The chunk text itself"
 
-        with patch("routers.retrieval.get_cached_analogy", return_value=None):
-            client = TestClient(app, raise_server_exceptions=True)
-            resp = client.post(
-                "/retrieval/accio",
-                params={"concept_node": "chain_rule", "chunk_text": "fallback test"},
-            )
-        assert resp.status_code == 200
-        body = resp.json()
-        # Fallback: original_text == chunk_text
-        assert body["original_text"] == "fallback test" or body["concept_node"] == "chain_rule"
+    @pytest.mark.asyncio
+    async def test_embedder_failure_raises(self):
+        """Embedder down is a hard failure — pipeline can't proceed."""
+        mock_embedder = MagicMock()
+        mock_embedder.encode_with_latency.side_effect = Exception("Model not loaded")
 
-    def test_accio_gemini_failure_uses_retrieved_text(self):
-        """Gemini failure should NOT crash the endpoint — returns retrieved text."""
-        from routers.retrieval import _get_embedder, _get_vectorai, _get_gemini, _get_elevenlabs
-        from main import create_app
+        with patch("routers.retrieval.get_embedder", return_value=mock_embedder):
+            with pytest.raises(Exception) as exc_info:
+                await run_retrieval_pipeline(
+                    concept_node="test",
+                    chunk_text="test",
+                    avatar=InterestAvatar.CRICKETER,
+                )
 
-        app = create_app()
-        mock_e, mock_v, _, mock_el = self._mock_deps()
-        mock_g = MagicMock()
-        mock_g.rewrite_analogy.side_effect = Exception("Gemini quota exceeded")
-
-        app.dependency_overrides[_get_embedder] = lambda: mock_e
-        app.dependency_overrides[_get_vectorai] = lambda: mock_v
-        app.dependency_overrides[_get_gemini] = lambda: mock_g
-        app.dependency_overrides[_get_elevenlabs] = lambda: mock_el
-
-        client = TestClient(app, raise_server_exceptions=True)
-        resp = client.post(
-            "/retrieval/accio",
-            params={"concept_node": "chain_rule", "chunk_text": "test"},
-        )
-        assert resp.status_code == 200
-        body = resp.json()
-        # analogy_text should fall back to retrieved text
-        assert body["analogy_text"] == body["original_text"]
-
-    def test_accio_vectorai_failure_uses_chunk_text(self):
-        """VectorAI failure should use chunk_text as retrieved text."""
-        from routers.retrieval import _get_embedder, _get_vectorai, _get_gemini, _get_elevenlabs
-        from main import create_app
-
-        app = create_app()
-        mock_e, _, mock_g, mock_el = self._mock_deps()
-        mock_v = MagicMock()
-        mock_v._client = MagicMock()
-        mock_v.search_similar.side_effect = Exception("Qdrant unavailable")
-
-        app.dependency_overrides[_get_embedder] = lambda: mock_e
-        app.dependency_overrides[_get_vectorai] = lambda: mock_v
-        app.dependency_overrides[_get_gemini] = lambda: mock_g
-        app.dependency_overrides[_get_elevenlabs] = lambda: mock_el
-
-        # Mock gemini to confirm it receives chunk_text as original
-        mock_g.rewrite_analogy.return_value = ("cricket analogy", 40.0)
-        client = TestClient(app, raise_server_exceptions=True)
-        resp = client.post(
-            "/retrieval/accio",
-            params={"concept_node": "backprop", "chunk_text": "Backprop gradients flow backward."},
-        )
-        assert resp.status_code == 200
-
-    def test_accio_batch_endpoint(self):
-        """GET /retrieval/accio-batch should return a list of RetrievalResult."""
-        from routers.retrieval import _get_embedder, _get_vectorai
-        from main import create_app
-
-        app = create_app()
-        mock_e, mock_v, _, _ = self._mock_deps()
-
-        app.dependency_overrides[_get_embedder] = lambda: mock_e
-        app.dependency_overrides[_get_vectorai] = lambda: mock_v
-
-        client = TestClient(app, raise_server_exceptions=True)
-        resp = client.post(
-            "/retrieval/accio-batch",
-            params={"concept_node": "chain_rule", "chunk_text": "test", "limit": 3},
-        )
-        assert resp.status_code == 200
-        results = resp.json()
-        assert isinstance(results, list)
-        assert len(results) >= 1
-        assert "text" in results[0]
-        assert "score" in results[0]
-
-    def test_accio_latency_tracking(self):
-        """AnalogyResponse should always include latency_ms with all stage keys."""
-        from routers.retrieval import _get_embedder, _get_vectorai, _get_gemini, _get_elevenlabs
-        from main import create_app
-
-        app = create_app()
-        mock_e, mock_v, mock_g, mock_el = self._mock_deps()
-
-        app.dependency_overrides[_get_embedder] = lambda: mock_e
-        app.dependency_overrides[_get_vectorai] = lambda: mock_v
-        app.dependency_overrides[_get_gemini] = lambda: mock_g
-        app.dependency_overrides[_get_elevenlabs] = lambda: mock_el
-
-        client = TestClient(app, raise_server_exceptions=True)
-        resp = client.post(
-            "/retrieval/accio",
-            params={"concept_node": "loss", "chunk_text": "The loss measures error."},
-        )
-        assert resp.status_code == 200
-        latency = resp.json()["latency_ms"]
-        for key in ("embedding", "retrieval", "gemini", "tts"):
-            assert key in latency, f"Missing latency key: {key}"
-
-    def test_accio_avatar_param(self):
-        """Avatar query param should propagate to the response."""
-        from routers.retrieval import _get_embedder, _get_vectorai, _get_gemini, _get_elevenlabs
-        from main import create_app
-
-        app = create_app()
-        mock_e, mock_v, mock_g, mock_el = self._mock_deps()
-
-        app.dependency_overrides[_get_embedder] = lambda: mock_e
-        app.dependency_overrides[_get_vectorai] = lambda: mock_v
-        app.dependency_overrides[_get_gemini] = lambda: mock_g
-        app.dependency_overrides[_get_elevenlabs] = lambda: mock_el
-
-        client = TestClient(app, raise_server_exceptions=True)
-        for avatar in ("cricketer", "gamer", "cook"):
-            resp = client.post(
-                "/retrieval/accio",
-                params={"concept_node": "backprop", "chunk_text": "test", "avatar": avatar},
-            )
-            assert resp.status_code == 200
-            assert resp.json()["avatar"] == avatar
-
-    def test_accio_batch_service_unavailable(self):
-        """If embedder fails in batch mode, return 503."""
-        from routers.retrieval import _get_embedder, _get_vectorai
-        from main import create_app
-
-        app = create_app()
-        mock_e = MagicMock()
-        mock_e.encode_with_latency.side_effect = RuntimeError("GPU OOM")
-        _, mock_v, _, _ = self._mock_deps()
-
-        app.dependency_overrides[_get_embedder] = lambda: mock_e
-        app.dependency_overrides[_get_vectorai] = lambda: mock_v
-
-        client = TestClient(app, raise_server_exceptions=False)
-        resp = client.post(
-            "/retrieval/accio-batch",
-            params={"concept_node": "chain_rule", "chunk_text": "test"},
-        )
-        assert resp.status_code == 503
+        assert "Embedding" in str(exc_info.value) or "503" in str(exc_info.value)
