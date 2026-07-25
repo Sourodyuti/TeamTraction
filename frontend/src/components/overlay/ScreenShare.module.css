@@ -1,0 +1,129 @@
+.container {
+  width: 100%;
+}
+
+.startPanel {
+  background: linear-gradient(135deg, #1e1b4b 0%, #312e81 100%);
+  border: 2px dashed #d4af37;
+  border-radius: 16px;
+  padding: 40px;
+  text-align: center;
+}
+
+.title {
+  color: #f5e6c8;
+  font-family: "Cinzel", serif;
+  font-size: 20px;
+  margin: 0 0 12px 0;
+}
+
+.description {
+  color: #a5b4fc;
+  font-size: 14px;
+  margin: 0 0 24px 0;
+  max-width: 400px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.btnShare {
+  background: linear-gradient(135deg, #d4af37 0%, #f5d76e 100%);
+  color: #0d0714;
+  border: none;
+  padding: 16px 32px;
+  border-radius: 12px;
+  font-weight: 700;
+  font-size: 16px;
+  cursor: pointer;
+  transition: all 0.3s;
+}
+
+.btnShare:hover {
+  transform: scale(1.05);
+  box-shadow: 0 8px 24px rgba(212, 175, 55, 0.4);
+}
+
+.error {
+  color: #ef4444;
+  margin-top: 16px;
+  font-size: 14px;
+}
+
+.preview {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  background: rgba(13, 7, 20, 0.8);
+  border-radius: 8px;
+}
+
+.badge {
+  background: #ef4444;
+  color: white;
+  padding: 4px 10px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 700;
+  animation: blink 1s ease-in-out infinite;
+}
+
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+
+.status {
+  color: #10b981;
+  font-size: 14px;
+  flex: 1;
+}
+
+.btnStop {
+  background: transparent;
+  color: #ef4444;
+  border: 1px solid #ef4444;
+  padding: 8px 16px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btnStop:hover {
+  background: rgba(239, 68, 68, 0.1);
+}
+
+.videoContainer {
+  position: relative;
+  border-radius: 12px;
+  overflow: hidden;
+  border: 2px solid #d4af37;
+}
+
+.video {
+  width: 100%;
+  max-height: 70vh;
+  object-fit: contain;
+  background: #000;
+}
+
+.overlay {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  padding: 12px;
+  background: linear-gradient(transparent, rgba(0, 0, 0, 0.7));
+}
+
+.hint {
+  color: #9ca3af;
+  font-size: 12px;
+  text-align: center;
+}

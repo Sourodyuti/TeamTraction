@@ -1,0 +1,151 @@
+.container {
+  position: fixed;
+  top: 0;
+  right: 0;
+  z-index: 1000;
+  pointer-events: none;
+}
+
+.alertOverlay {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  pointer-events: auto;
+  animation: slideIn 0.3s ease-out;
+}
+
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateX(100px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.alertCard {
+  background: linear-gradient(135deg, #1e1b4b 0%, #312e81 100%);
+  border: 2px solid #d4af37;
+  border-radius: 12px;
+  padding: 20px;
+  min-width: 300px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+}
+
+.alertIcon {
+  font-size: 32px;
+  text-align: center;
+  margin-bottom: 12px;
+  animation: pulse 1s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.1); }
+}
+
+.alertTitle {
+  color: #f5e6c8;
+  font-family: "Cinzel", serif;
+  font-size: 16px;
+  margin: 0 0 8px 0;
+  text-align: center;
+}
+
+.alertRecommendation {
+  color: #a5b4fc;
+  font-size: 14px;
+  margin: 0 0 16px 0;
+  text-align: center;
+}
+
+.alertActions {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+}
+
+.btnPrimary {
+  background: linear-gradient(135deg, #d4af37 0%, #f5d76e 100%);
+  color: #0d0714;
+  border: none;
+  padding: 10px 16px;
+  border-radius: 8px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform 0.2s;
+}
+
+.btnPrimary:hover {
+  transform: scale(1.05);
+}
+
+.btnSecondary {
+  background: transparent;
+  color: #a5b4fc;
+  border: 1px solid #a5b4fc;
+  padding: 10px 16px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btnSecondary:hover {
+  background: rgba(165, 180, 252, 0.1);
+}
+
+.statusBar {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  background: rgba(13, 7, 20, 0.9);
+  border: 1px solid rgba(212, 175, 55, 0.3);
+  border-radius: 24px;
+  padding: 12px 20px;
+  pointer-events: auto;
+}
+
+.radarMini {
+  display: flex;
+  gap: 6px;
+}
+
+.radarDot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  transition: all 0.3s;
+}
+
+.radarDot[data-active="true"] {
+  animation: ping 1s ease-in-out infinite;
+}
+
+@keyframes ping {
+  0%, 100% { box-shadow: 0 0 0 0 currentColor; }
+  50% { box-shadow: 0 0 8px 2px currentColor; }
+}
+
+.latencyBadge {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.latencyValue {
+  color: #66fcf1;
+  font-family: "JetBrains Mono", monospace;
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.latencyLabel {
+  color: #6b7280;
+  font-size: 10px;
+  text-transform: uppercase;
+}
