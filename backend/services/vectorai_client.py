@@ -67,9 +67,7 @@ class VectorAIClient:
         client = self._get_client()
 
         try:
-            collections = client.get_collections().collections
-            existing = [c.name for c in collections]
-            if COLLECTION_NAME in existing:
+            if client.collections.exists(COLLECTION_NAME):
                 logger.info(
                     "Collection '%s' already exists — skipping creation",
                     COLLECTION_NAME,
@@ -117,7 +115,7 @@ class VectorAIClient:
                 )
             )
 
-        client.upsert(
+        client.points.upsert(
             collection_name=COLLECTION_NAME,
             points=actian_points,
         )
@@ -131,36 +129,40 @@ class VectorAIClient:
         Returns list of {"id": ..., "payload": {...}, "score": float}.
         """
         client = self._get_client()
-        
-        kwargs = {
+
+        search_kwargs: dict = {
             "collection_name": COLLECTION_NAME,
-            "query": query_vector,
+            "vector": list(query_vector),
             "limit": limit,
             "with_payload": True,
         }
-        
+
         if filter:
-            from actian.vectorai.models.filter import Filter, FieldCondition, MatchValue
-            conditions = []
-            for k, v in filter.items():
-                conditions.append(FieldCondition(key=k, match=MatchValue(value=v)))
-            kwargs["query_filter"] = Filter(must=conditions)
-        
+            try:
+                from actian_vectorai.filters import Filter, FieldCondition, MatchValue
+                conditions = [
+                    FieldCondition(key=k, match=MatchValue(value=v))
+                    for k, v in filter.items()
+                ]
+                search_kwargs["filter"] = Filter(must=conditions)
+            except Exception:
+                pass  # filter unsupported — search without it
+
         try:
-            hits = client.query_points(**kwargs)
+            hits = client.points.search(**search_kwargs)
         except Exception:
-            # If actian SDK imports or Filter construct differ, fallback to filtering post-search
-            # Just grab more points and filter in-memory if query_filter fails
-            kwargs.pop("query_filter", None)
-            kwargs["limit"] = limit * 5
-            hits = client.query_points(**kwargs)
-            filtered_points = [p for p in hits.points if p.payload and all(p.payload.get(k) == v for k, v in filter.items())] if filter else hits.points
-            hits.points = filtered_points[:limit]
-
-
+            # Fallback: search without filter, filter in Python
+            search_kwargs.pop("filter", None)
+            search_kwargs["limit"] = limit * 5
+            hits = client.points.search(**search_kwargs)
+            if filter:
+                hits = [
+                    p for p in hits
+                    if p.payload and all(p.payload.get(k) == v for k, v in filter.items())
+                ][:limit]
 
         results = []
-        for hit in hits.points:
+        for hit in hits:
             results.append({
                 "id": hit.id,
                 "payload": hit.payload or {},
