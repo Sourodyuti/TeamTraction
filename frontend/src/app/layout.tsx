@@ -42,11 +42,11 @@ export default function RootLayout({
         <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
         <meta name="apple-mobile-web-app-title" content="Muffliato" />
         <meta name="theme-color" content="#0D0714" />
-        {/* Service Worker registration — runs only in browser context */}
+        {/* Service Worker registration — skip during dev to avoid dupe with Next.js HMR */}
         <script
           dangerouslySetInnerHTML={{
             __html: `
-              if (location.hostname !== 'localhost' if ('serviceWorker' in navigator) {if ('serviceWorker' in navigator) { 'serviceWorker' in navigator) {
+              if (location.hostname !== 'localhost' && 'serviceWorker' in navigator) {
                 window.addEventListener('load', function() {
                   navigator.serviceWorker.register('/sw.js', { scope: '/' })
                     .then(function(reg) {

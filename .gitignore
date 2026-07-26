@@ -16,13 +16,11 @@ build/
 venv/
 env/
 
-# Environment files
-.env
+# Environment files (committed for deployment convenience — SANITIZE before making repo public)
 .env.local
 .env.development.local
 .env.test.local
 .env.production.local
-backend/.env
 frontend/.env
 
 # IDE

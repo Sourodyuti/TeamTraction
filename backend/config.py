@@ -39,6 +39,7 @@ class Settings(BaseSettings):
     # ─── Cloud generative step ────────────────────────────────────
     gemini_api_key: str = ""
     elevenlabs_api_key: str = ""
+    nvidia_api_key: str = ""
 
     # ─── Whisper (ASR) ────────────────────────────────────────────
     whisper_model_path: str = "./models/ggml-base.en.bin"
