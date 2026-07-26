@@ -140,7 +140,7 @@ async def _embed_and_upsert(chunk: ChunkIngest, chunk_id: str) -> bool:
             "payload": {
                 "topic_node": chunk.topic_node,
                 "ts": chunk.ts,
-                "diff": chunk.difficulty,
+                "difficulty": chunk.difficulty,   # fix: was "diff", must match search_filtered key
                 "source": chunk.source,
                 "lecture_id": chunk.lecture_id,
                 "text": chunk.text,
