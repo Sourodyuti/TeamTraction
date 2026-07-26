@@ -138,7 +138,26 @@ async def confusion_density(
         """,
         (lecture_id,)
     )
-    return {"data": [{"ts": r[0].isoformat() if not isinstance(r[0], str) else r[0], "type": r[1]} for r in rows]}
+    def _normalise_ts(raw) -> str:
+        """Return a strict ISO-8601 UTC string regardless of what SQLite stored.
+
+        SQLite may store naive datetimes (no TZ suffix) if inserted without
+        timezone.utc — e.g. '2026-07-26 02:37:19.441587'.  new Date() in
+        Firefox/Safari rejects these, returning Invalid Date and breaking the
+        density chart.  Normalise:
+          1. datetime objects  → .isoformat() gives '+00:00' if tz-aware
+          2. strings with space → replace with 'T'
+          3. strings without tz → append '+00:00'
+        """
+        if not isinstance(raw, str):
+            ts_str = raw.isoformat()
+        else:
+            ts_str = raw
+        ts_str = ts_str.replace(" ", "T")  # '2026-07-26 02:37:19' → '2026-07-26T02:37:19'
+        if not (ts_str.endswith("Z") or "+" in ts_str[10:] or ts_str.endswith("00:00")):
+            ts_str += "+00:00"  # make it unambiguously UTC
+        return ts_str
+    return {"data": [{"ts": _normalise_ts(r[0]), "type": r[1]} for r in rows]}
 
 @router.get("/cohort-heatmap")
 async def cohort_heatmap(lecture_id: int) -> dict:

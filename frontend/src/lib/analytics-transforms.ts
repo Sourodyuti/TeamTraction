@@ -25,10 +25,24 @@ export function eventsToDensityTimeline(
 ): TimelinePoint[] {
   if (!events.length) return [];
 
+  /** Safely parse any ISO-ish timestamp string — handles naive (no-TZ) strings
+   *  that SQLite may emit without the +00:00 suffix, which cause new Date() to
+   *  return Invalid Date in Firefox / Safari.  We normalise the separator and
+   *  append Z when no offset is present. */
+  function safeParseTsMs(ts: string): number {
+    // Replace space separator with T  ("2026-07-26 02:37:19" → "2026-07-26T02:37:19")
+    let s = ts.replace(" ", "T");
+    // Append Z if there is no timezone offset (no +, no Z after position 10)
+    if (!s.endsWith("Z") && !/[+-]\d{2}:\d{2}$/.test(s)) {
+      s += "Z";
+    }
+    return new Date(s).getTime();
+  }
+
   // Sort ascending by timestamp (backend returns ASC, but be defensive).
   const sorted = [...events].sort((a, b) => {
-    const ta = new Date(a.ts).getTime();
-    const tb = new Date(b.ts).getTime();
+    const ta = safeParseTsMs(a.ts);
+    const tb = safeParseTsMs(b.ts);
     return ta - tb;
   });
 
@@ -36,7 +50,7 @@ export function eventsToDensityTimeline(
   const points: TimelinePoint[] = [];
 
   for (let i = 0; i < sorted.length; i++) {
-    const tEnd = new Date(sorted[i].ts).getTime();
+    const tEnd = safeParseTsMs(sorted[i].ts);
     const tStart = tEnd - windowMs;
 
     // Count signals in the trailing window.
