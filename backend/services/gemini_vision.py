@@ -69,17 +69,16 @@ class GeminiVisionClient:
         _UNKNOWN = {"topic_node": "unknown", "slide_text_summary": "", "difficulty": 5, "key_terms": []}
 
         if not self.available:
-            logger.warning("Gemini Vision unavailable — returning empty context")
-            return _UNKNOWN, 0.0
+            logger.warning("Gemini Vision unavailable — attempting Nvidia fallback")
+            return self._nvidia_fallback(image_bytes, mime_type)
 
-        # 429 circuit breaker — refuse calls until backoff window clears
         wait_remaining = self._rate_limited_until - time.time()
         if wait_remaining > 0:
             logger.warning(
                 "Gemini Vision rate-limited — skipping call, %.0fs remaining in backoff window.",
                 wait_remaining,
             )
-            return _UNKNOWN, 0.0
+            return self._nvidia_fallback(image_bytes, mime_type)
 
         try:
             start = time.perf_counter()
@@ -137,6 +136,96 @@ class GeminiVisionClient:
                 )
             else:
                 logger.error("Gemini Vision analysis failed: %s", e)
+            return self._nvidia_fallback(image_bytes, mime_type)
+
+    def _nvidia_fallback(
+        self,
+        image_bytes: bytes,
+        mime_type: str
+    ) -> tuple[dict[str, Any], float]:
+        """Fallback to Nvidia NIM Vision model with EXIF rotation and OCR."""
+        start = time.perf_counter()
+        api_key = settings.nvidia_api_key
+        _UNKNOWN = {"topic_node": "unknown", "slide_text_summary": "", "difficulty": 5, "key_terms": []}
+
+        if not api_key:
+            logger.warning("NVIDIA_API_KEY not set for fallback")
+            return _UNKNOWN, 0.0
+
+        import base64
+        import httpx
+        import json
+        import io
+        from PIL import Image, ImageOps
+        import pytesseract
+
+        try:
+            # 1. Open image and fix EXIF rotation
+            img = Image.open(io.BytesIO(image_bytes))
+            img = ImageOps.exif_transpose(img)
+            
+            # 2. Extract perfectly oriented text via local OCR
+            ocr_text = pytesseract.image_to_string(img)
+            
+            # 3. Downscale for the API to prevent massive payloads
+            img.thumbnail((1024, 1024))
+            buffer = io.BytesIO()
+            img.save(buffer, format="JPEG", quality=85)
+            optimized_bytes = buffer.getvalue()
+            b64_image = base64.b64encode(optimized_bytes).decode("utf-8")
+        except Exception as e:
+            logger.error("Failed to process image with PIL/OCR: %s", e)
+            b64_image = base64.b64encode(image_bytes).decode("utf-8")
+            ocr_text = ""
+        
+        if ocr_text:
+            prompt = f"I have run local OCR on this image. OCR Text:\n{ocr_text}\n\nBased on the image and this exact OCR text, {_CONTEXT_PROMPT}"
+        else:
+            prompt = _CONTEXT_PROMPT
+
+        headers = {
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json"
+        }
+        
+        payload = {
+            "model": "meta/llama-3.2-90b-vision-instruct",
+            "messages": [
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": prompt},
+                        {"type": "image_url", "image_url": {"url": f"data:{mime_type};base64,{b64_image}"}}
+                    ]
+                }
+            ],
+            "max_tokens": 1024,
+            "temperature": 0.1
+        }
+        
+        try:
+            with httpx.Client(timeout=180.0) as client:
+                resp = client.post(
+                    "https://integrate.api.nvidia.com/v1/chat/completions",
+                    headers=headers,
+                    json=payload
+                )
+            
+            resp.raise_for_status()
+            response_text = resp.json()["choices"][0]["message"]["content"].strip()
+            
+            start_idx = response_text.find("{")
+            end_idx = response_text.rfind("}")
+            if start_idx != -1 and end_idx != -1 and end_idx >= start_idx:
+                context = json.loads(response_text[start_idx:end_idx + 1])
+            else:
+                raise ValueError(f"No JSON block found in response: {response_text}")
+            elapsed_ms = (time.perf_counter() - start) * 1000
+            
+            logger.info("Nvidia Vision fallback succeeded: topic=%s latency=%.0fms", context.get("topic_node", "unknown"), elapsed_ms)
+            return context, elapsed_ms
+        except Exception as e:
+            logger.error("Nvidia Vision fallback failed: %s", e)
             return _UNKNOWN, 0.0
 
     def health_check(self) -> bool:
