@@ -40,10 +40,23 @@ router = APIRouter(prefix="/ws", tags=["websocket"])
 class ConnectionManager:
     """Manages WebSocket connections partitioned by lecture_id and student_id/role."""
 
+    MAX_CONNECTIONS_PER_LECTURE = 200
+    MAX_TEACHERS_PER_LECTURE = 10
+
     def __init__(self) -> None:
         self._connections: Dict[int, Dict[str, Dict]] = defaultdict(dict)
         self._teacher_connections: Dict[int, Set[WebSocket]] = defaultdict(set)
         self._lock = asyncio.Lock()
+
+    def can_accept(self, lecture_id: int, role: str) -> bool:
+        if role == "teacher":
+            return len(self._teacher_connections.get(lecture_id, set())) < self.MAX_TEACHERS_PER_LECTURE
+        student_count = sum(
+            1 for e in self._connections.get(lecture_id, {}).values()
+            if e.get("role") == "student"
+        )
+        teacher_count = len(self._teacher_connections.get(lecture_id, set()))
+        return (student_count + teacher_count) < self.MAX_CONNECTIONS_PER_LECTURE
 
     def connect(self, lecture_id: int, student_id: str, websocket: WebSocket, role: str = "student") -> None:
         self._connections[lecture_id][student_id] = {"ws": websocket, "role": role}
@@ -189,6 +202,17 @@ offline_queue = OfflineQueue()
 async def lecture_websocket(websocket: WebSocket, lecture_id: int) -> None:
     role = websocket.query_params.get("role", "student")
     student_id = websocket.query_params.get("student_id", f"user_{id(websocket)}")
+
+    if not manager.can_accept(lecture_id, role):
+        await websocket.accept()
+        await websocket.send_json({
+            "type": "error",
+            "message": f"Lecture {lecture_id} is full. Maximum {manager.MAX_CONNECTIONS_PER_LECTURE} connections."
+        })
+        await websocket.close(code=1008)
+        logger.warning("WS rejected lecture=%d role=%s — connection limit reached", lecture_id, role)
+        return
+
     await websocket.accept()
 
     manager.connect(lecture_id, student_id, websocket, role=role)

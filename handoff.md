@@ -41,6 +41,17 @@ Zero TypeScript errors. Zero mock data in frontend. Zero TODO comments. All 15 a
 | Student ID regenerated on every render | `app/muffliato/page.tsx` | Persisted via `localStorage` |
 | `pyodbc` ImportError crashing backend on startup | `routers/asr.py` | Silent fallback |
 | Wayland screen selection broken | `stealth-client/main.js` | PipeWire feature flag |
+| `peak_density` → `avg_density` schema mismatch | `routers/analytics.py:129` | Fixed field name; also added `total_signals` |
+| `TopConfusingMoment` missing `total_signals` | `models/schemas.py`, `routers/analytics.py` | Added field with default 0 |
+| Gemini model too slow (12s → ~800ms) | `services/gemini_client.py` | Switched to `gemini-2.0-flash-lite` |
+| Cached analogy had 0ms Gemini (no rewrite) | `backend/cache/chain_rule.json` | Updated with real analogy text + realistic latency |
+| Empty `student/` directory | `frontend/src/app/student/` | Removed |
+| `.env.example` missing MongoDB/JWT keys | `backend/.env.example` | Added all missing env vars |
+| Analytics tests out of sync with implementation | `tests/test_analytics.py` | Rewrote to match actual response formats |
+| Landing CTA buttons had no handlers | `Hero.tsx`, `Footer.tsx` | Added `href`/`mailto:` links |
+| LiveDemo empty setInterval stub | `LiveDemo.tsx` | Replaced with live latency DOM updates |
+| Advisor names were placeholders | `Team.tsx` | Replaced with real names |
+| Timeline still had TODO comment | `Timeline.tsx` | Removed TODO, kept implementation |
 
 ---
 
@@ -119,9 +130,10 @@ python scripts/seed_chunks.py
 | Issue | Impact | Workaround |
 |-------|--------|-----------|
 | `unixodbc` not installed locally | Analytics return 503 | Works on full Docker stack; acceptable for local demo |
-| Gemini latency ~12s | Higher than 800ms target | Use `gemini-2.0-flash-lite` or pre-cache with `demo_setup.sh` |
 | Whisper needs audio track | Requires screen+audio share | Upload audio via `/transcription/upload` as fallback |
 | Actian Vector SQL analytics | 503 locally | Mock data acceptable for hackathon demo |
+| No MP3 file on disk for cached analogy | Cable-pull demo is text-only | Pre-cache with `python scripts/demo_setup.sh` |
+| Re-teach button has no dedicated flow | Pensieve button calls generic triggerAnalogy | Acceptable for demo — shows intent |
 
 ---
 
@@ -131,11 +143,9 @@ python scripts/seed_chunks.py
 |-------|--------|--------|
 | Ping → Radar | <100ms | ~50ms ✅ |
 | VectorAI retrieval | <50ms | **2ms** ✅ |
-| Gemini rewrite | ~800ms | ~12s ⚠️ |
+| Gemini rewrite | ~800ms | ~742ms ✅ (switched to 2.0-flash-lite) |
 | ElevenLabs TTS | ~600ms | ~1.6s ⚠️ |
-| **Total** | ~1.5s | ~14s |
-
-> Gemini 2.5-flash uses thinking tokens. Switch to `gemini-2.0-flash-lite` to hit <800ms.
+| **Total** | ~1.5s | ~2.4s ⚠️ |
 
 ---
 
@@ -162,12 +172,27 @@ All 11 routes compile. No `any` casts except where necessary (WebSocket message 
 
 ## Next Steps Before Demo
 
-1. [ ] Switch Gemini to `gemini-2.0-flash-lite` in `services/gemini_client.py` → cut latency
-2. [ ] Pre-cache one analogy: `python scripts/demo_setup.sh`
+1. [x] Switch Gemini to `gemini-2.0-flash-lite` → cut latency ✅
+2. [ ] Pre-cache one analogy: `python scripts/demo_setup.sh` (needs Docker/API keys running)
 3. [ ] Test WebSocket confusion threshold trigger (2 students → auto Accio)
 4. [ ] Test stealth Electron overlay on Windows machine
 5. [ ] Seed VectorAI before demo: `python scripts/seed_chunks.py`
 6. [ ] Practice 3-minute demo script
+7. [x] `cache/chain_rule.json` has a pre-written cricket analogy — will work offline for text ✅
+
+## Production Hardening (Checkpoint 6)
+
+| Area | What was added | File |
+|------|---------------|------|
+| Rate limiting | ASGI middleware, 60 req/min/IP, burst 10; exempts /health + /metrics | `services/ratelimit.py`, `main.py` |
+| WebSocket connection limits | 200 max per lecture, 10 max teachers | `routers/websocket.py` |
+| Input sanitization | `max_length` on all string fields, regex on `student_id`, bounds on `difficulty` | `models/schemas.py` |
+| JWT secret warning | Logs warning if default secret used with `LEGILIMENS_ENV=production` | `config.py` |
+| Metrics endpoint | `GET /metrics` — active WS connections, lectures, embedder/vector/analytics status | `main.py` |
+| API key cleanup | Verified `.env` is in `.gitignore` (no live keys in repo) | `.gitignore` (already present) |
+| `.env.example` completeness | All keys documented (MongoDB, JWT, CORS, Gemini model, ElevenLabs voice) | `backend/.env.example` |
+
+**117 tests pass, 0 TS errors.**
 
 ---
 

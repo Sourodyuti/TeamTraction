@@ -126,7 +126,8 @@ async def top_confusing_moments(
             TopConfusingMoment(
                 concept_node=concept_node,
                 lost_count=int(lost_count),
-                peak_density=avg_density,
+                total_signals=int(total),
+                avg_density=avg_density,
             )
         )
     return results

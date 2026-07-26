@@ -1,20 +1,27 @@
 "use client";
 
+import { useEffect, useRef } from "react";
 import { useScreenCapture } from "@/hooks/useScreenCapture";
 import styles from "./ScreenShare.module.css";
 
 interface ScreenShareProps {
   onStreamReady?: (stream: MediaStream) => void;
-  onContextDetected?: (context: { concept_node: string; slide_text: string }) => void;
+  onContextDetected?: (context: { topic_node: string; slide_text_summary: string; key_terms: string[] }) => void;
 }
 
 export function ScreenShare({ onStreamReady, onContextDetected }: ScreenShareProps) {
-  // useScreenShare was replaced by useScreenCapture — uses same getDisplayMedia API
-  const { isCapturing, stream, startCapture, stopCapture, videoRef, recordingStatus } = useScreenCapture();
+  const { isCapturing, stream, startCapture, stopCapture, videoRef, recordingStatus } = useScreenCapture(onContextDetected);
+  const streamReadyFired = useRef(false);
 
-  if (isCapturing && stream) {
-    onStreamReady?.(stream);
-  }
+  useEffect(() => {
+    if (isCapturing && stream && !streamReadyFired.current) {
+      streamReadyFired.current = true;
+      onStreamReady?.(stream);
+    }
+    if (!isCapturing) {
+      streamReadyFired.current = false;
+    }
+  }, [isCapturing, stream, onStreamReady]);
 
   const error = recordingStatus === "error" ? "Screen capture failed" : null;
 

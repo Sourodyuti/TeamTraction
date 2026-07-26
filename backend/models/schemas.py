@@ -32,7 +32,7 @@ class InterestAvatar(str, Enum):
 
 class StudentPing(BaseModel):
     """A student's confusion/got-it signal, sent over WebSocket."""
-    student_id: str = Field(..., description="Student identifier (anonymous for privacy)")
+    student_id: str = Field(..., max_length=64, pattern=r"^[a-zA-Z0-9_\-@\.]+$", description="Student identifier (anonymous for privacy)")
     ts: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     signal_type: SignalType
     lecture_id: int
@@ -42,13 +42,13 @@ class StudentPing(BaseModel):
 
 class LectureChunk(BaseModel):
     """A ~15s segment of transcribed lecture, ready for embedding + upsert."""
-    chunk_id: str
+    chunk_id: str = Field(..., max_length=128)
     lecture_id: int
-    text: str
-    topic_node: str
-    subtopic: str = ""
+    text: str = Field(..., max_length=10000)
+    topic_node: str = Field(..., max_length=128)
+    subtopic: str = Field(default="", max_length=256)
     difficulty: int = Field(default=3, ge=1, le=10)
-    source: str = "lecture"  # "lecture" | "textbook"
+    source: str = Field(default="lecture", max_length=32)  # "lecture" | "textbook"
     ts: float = 0.0                  # Start timestamp within the lecture (seconds)
     vector: Optional[list[float]] = None  # Populated after embedding
 
@@ -70,17 +70,17 @@ class TopConfusingMoment(BaseModel):
     """Pensieve: one entry in the 'top-3 worst moments' report."""
     concept_node: str
     lost_count: int
-    total_signals: int
     avg_density: float  # Rolling 60s confusion density at peak
+    total_signals: int = 0
 
 
 # ─── Phase 4-5: Retrieval + Generation ────────────────────────────
 
 class AnalogyRequest(BaseModel):
     """Triggered when threshold is met. Retrieves + rewrites an analogy."""
-    concept_node: str
-    chunk_text: str
-    student_ids: list[str]
+    concept_node: str = Field(..., max_length=256)
+    chunk_text: str = Field(default="", max_length=10000)
+    student_ids: list[str] = Field(default_factory=list, max_length=500)
     avatar: InterestAvatar = InterestAvatar.CRICKETER
 
 

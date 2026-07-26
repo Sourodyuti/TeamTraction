@@ -20,7 +20,7 @@ interface TeacherAlertProps {
 
 export function TeacherAlert({ lectureId, onReexplain, onContinue }: TeacherAlertProps) {
   const [alert, setAlert] = useState<ConfusionAlert | null>(null);
-  const { conceptNodes, latencyMs } = useRadarData(lectureId);
+  const { conceptNodes, latencyBadge } = useRadarData(lectureId);
 
   const handleDismissAlert = () => {
     setAlert(null);
@@ -79,7 +79,7 @@ export function TeacherAlert({ lectureId, onReexplain, onContinue }: TeacherAler
         </div>
         <div className={styles.latencyBadge}>
           <span className={styles.latencyValue}>
-            {latencyMs ? `${Math.round(latencyMs)}ms` : "—"}
+            {latencyBadge?.total_ms ? `${Math.round(latencyBadge.total_ms)}ms` : "—"}
           </span>
           <span className={styles.latencyLabel}>retrieval</span>
         </div>

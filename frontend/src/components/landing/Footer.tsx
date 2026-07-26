@@ -117,15 +117,19 @@ export function Footer() {
               Contact us for the 3-bullet feasibility note, architecture diagram, and demo video.
             </p>
             <div className={styles.ctaButtons}>
-              <Button size="lg" variant="gold" className={styles.ctaButton}>
-                Request Pilot Proposal
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                  <path d="M5 12h14M12 5l7 7-7 7" />
-                </svg>
-              </Button>
-              <Button size="lg" variant="ghost" className={styles.ctaButton}>
-                View Devfolio Submission
-              </Button>
+              <a href="mailto:sourodyuti.biswas@gmail.com?subject=Legilimens%20Pilot%20Proposal">
+                <Button size="lg" variant="gold" className={styles.ctaButton}>
+                  Request Pilot Proposal
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                    <path d="M5 12h14M12 5l7 7-7 7" />
+                  </svg>
+                </Button>
+              </a>
+              <a href="https://devfolio.co" target="_blank" rel="noopener noreferrer">
+                <Button size="lg" variant="ghost" className={styles.ctaButton}>
+                  View Devfolio Submission
+                </Button>
+              </a>
             </div>
           </div>
         </ScrollReveal>

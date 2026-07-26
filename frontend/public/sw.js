@@ -4,7 +4,7 @@
 //   - API & WebSocket upgrade requests: network-first, fall back to cache
 //   - Muffliato page: pre-cached so student phones work offline
 
-const CACHE_NAME = 'legilimens-v1';
+const CACHE_NAME = 'legilimens-v2';
 const STATIC_PRECACHE = [
   '/',
   '/muffliato',
@@ -54,8 +54,13 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Everything else — cache first (shell, assets, Muffliato page)
-  event.respondWith(cacheFirst(request));
+  // HTML pages — network first (always get latest), everything else cache first
+  if (url.pathname === '/' || url.pathname.startsWith('/_next/')) {
+    event.respondWith(cacheFirst(request));
+  } else {
+    // Muffliato, dashboard, etc — network first (updates take effect immediately)
+    event.respondWith(networkFirst(request));
+  }
 });
 
 // ── Strategies ────────────────────────────────────────────────

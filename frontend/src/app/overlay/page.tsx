@@ -14,7 +14,7 @@ export default function OverlayPage() {
   const handleTriggerAnalogy = async () => {
     if (!currentAlert) return;
     try {
-      const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+      const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8001";
       await fetch(`${baseUrl}/retrieval/accio`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
