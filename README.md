@@ -114,6 +114,48 @@ flowchart LR
   AVEC -- Aggregated Stats --> PEN
 ```
 
+```text
++-------------------------------------------------------------------+
+|                       1. EDGE / CLASSROOM                         |
+|                                                                   |
+|       [Student Phone]                 [Professor's Device]        |
+|    (Muffliato web-buttons)            (Audio & Screen Capture)    |
+|               ^       |                           |               |
++---------------|-------|---------------------------|---------------+
+         (Audio)|       |(WebSocket Pings)          |(Transcript)
+                |       v                           v
++---------------|---------------------------------------------------+
+|               |       2. ON-PREM 'SCHOOL SERVER'                  |
+|               |                                                   |
+|               |    [FastAPI Orchestrator]      [bge-small Embedder]
+|               |      (WebSocket + REST)          (Local, 384-dim) |
+|               |         |           |                     |       |
+|               |         |           +-----------------+   |       |
+|               |  (SQL)  v            (Semantic Search)v   v(Vectors)
+|               | [Actian Analytics]       [Actian VectorAI DB]     |
+|               |   (Columnar SQL)       (Semantic Retrieval Engine)|
++---------------|---------|---^-------------------------------------+
+                |         |   |
+     (TTS Text) | (Prompt)|   |(Rewritten Analogy)
+                |         v   |
++---------------|---------------------------------------------------+
+|               |        3. CLOUD (Generative Step)                 |
+|               |                                                   |
+|               |            [Google Gemini API]                    |
+|               |             (Analogy Rewrite)                     |
+|               |                                                   |
+|               +----------- [ElevenLabs TTS]                       |
+|                          (Voice Re-delivery)                      |
++-------------------------------------------------------------------+
+
++-------------------------------------------------------------------+
+|                       4. TEACHER DASHBOARD                        |
+|                                                                   |
+|        [Marauder's Radar]              [Pensieve Analytics]       |
+|       (D3 Radial Heatmap)            (Top Confusing Moments)      |
++-------------------------------------------------------------------+
+```
+
 <h3>The defining structural choice: the entire student-data path (capture → embed → retrieve → analytics) lives inside the "school server" laptop. Only the final analogy rewrite + voice cross the network, and that payload is anonymised text. Pull the Ethernet cable and the radar, retrieval, and analytics still work.</h3>
 
 ![Divider](./assets/divider.svg)
