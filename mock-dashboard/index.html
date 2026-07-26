@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Legilimens - Teacher Dashboard</title>
+  <link rel="stylesheet" href="index.css">
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&family=Inter:wght@400;500;700&display=swap" rel="stylesheet">
+</head>
+<body>
+  <div class="dashboard-container">
+    <!-- Sidebar -->
+    <aside class="sidebar glass-panel">
+      <div class="logo">
+        <span class="logo-icon">🔮</span>
+        <h1>Legilimens</h1>
+      </div>
+      <nav class="nav-menu">
+        <a href="#" class="nav-item active">
+          <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"></path></svg>
+          Overview
+        </a>
+        <a href="#" class="nav-item">
+          <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"></path></svg>
+          Students
+        </a>
+        <a href="#" class="nav-item">
+          <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path></svg>
+          Analytics
+        </a>
+      </nav>
+      
+      <div class="sidebar-status">
+        <div class="status-indicator"></div>
+        <span>Live Class: Backpropagation</span>
+      </div>
+    </aside>
+
+    <!-- Main Content -->
+    <main class="main-content">
+      <header class="topbar glass-panel">
+        <div class="header-left">
+          <h2>Classroom Radar</h2>
+          <p class="subtitle">Real-time confusion heatmap</p>
+        </div>
+        <div class="header-stats">
+          <div class="stat-card">
+            <span class="stat-value text-gradient">32</span>
+            <span class="stat-label">Active</span>
+          </div>
+          <div class="stat-card">
+            <span class="stat-value text-red" id="lost-count">0</span>
+            <span class="stat-label">Lost</span>
+          </div>
+          <div class="stat-card">
+            <span class="stat-value text-green" id="gotit-count">0</span>
+            <span class="stat-label">Got It</span>
+          </div>
+        </div>
+      </header>
+
+      <div class="dashboard-grid">
+        <!-- Heatmap Section -->
+        <section class="heatmap-section glass-panel">
+          <div class="section-header">
+            <h3>Student Confusion Heatmap</h3>
+            <div class="legend">
+              <span class="legend-item"><span class="dot dot-gotit"></span> Understood</span>
+              <span class="legend-item"><span class="dot dot-neutral"></span> Neutral</span>
+              <span class="legend-item"><span class="dot dot-lost"></span> Confused</span>
+            </div>
+          </div>
+          <div class="heatmap-container">
+            <div id="classroom-grid" class="classroom-grid">
+              <!-- JS will populate student desks -->
+            </div>
+            
+            <!-- Radial Radar Overlay Effect -->
+            <div class="radar-scanner"></div>
+          </div>
+        </section>
+
+        <!-- Insights & Interventions -->
+        <div class="side-panels">
+          <section class="insights-panel glass-panel">
+            <div class="section-header">
+              <h3>Live Interventions</h3>
+              <span class="badge pulse">Active</span>
+            </div>
+            <div class="interventions-list" id="interventions-list">
+              <!-- JS will populate alerts -->
+            </div>
+          </section>
+
+          <section class="topic-panel glass-panel">
+            <div class="section-header">
+              <h3>Current Topic Focus</h3>
+            </div>
+            <div class="topic-info">
+              <h4 class="text-gradient">Chain Rule Application</h4>
+              <p>Confidence score dropping across left quadrant.</p>
+              <div class="progress-bar-container">
+                <div class="progress-bar" style="width: 65%;"></div>
+              </div>
+              <div class="topic-meta">
+                <span>Class Average: 65%</span>
+                <span>Time: 12:45</span>
+              </div>
+              <button class="action-btn">🪄 Accio Analogy</button>
+            </div>
+          </section>
+        </div>
+      </div>
+    </main>
+  </div>
+  <script src="app.js"></script>
+</body>
+</html>
