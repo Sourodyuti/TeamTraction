@@ -98,31 +98,31 @@ export default function RegisterPage() {
           <div style={s.row}>
             <div style={s.field}>
               <label style={s.label}>Full name</label>
-              <input id="reg-name" type="text" value={form.full_name} onChange={set("full_name")}
+              <input id="reg-name" name="full_name" type="text" value={form.full_name} onChange={set("full_name")}
                 placeholder="Hermione Granger" style={s.input} autoComplete="name" />
             </div>
             <div style={s.field}>
               <label style={s.label}>Username</label>
-              <input id="reg-username" type="text" value={form.username} onChange={set("username")}
+              <input id="reg-username" name="username" type="text" value={form.username} onChange={set("username")}
                 placeholder="hermione_g" style={s.input} required autoComplete="username" />
             </div>
           </div>
 
           <div style={s.field}>
             <label style={s.label}>Email</label>
-            <input id="reg-email" type="email" value={form.email} onChange={set("email")}
+            <input id="reg-email" name="email" type="email" value={form.email} onChange={set("email")}
               placeholder="hermione@hogwarts.edu" style={s.input} required autoComplete="email" />
           </div>
 
           <div style={s.row}>
             <div style={s.field}>
               <label style={s.label}>Password</label>
-              <input id="reg-password" type="password" value={form.password} onChange={set("password")}
+              <input id="reg-password" name="password" type="password" value={form.password} onChange={set("password")}
                 placeholder="••••••••" style={s.input} required autoComplete="new-password" />
             </div>
             <div style={s.field}>
               <label style={s.label}>Confirm</label>
-              <input id="reg-confirm" type="password" value={form.confirmPassword} onChange={set("confirmPassword")}
+              <input id="reg-confirm" name="confirmPassword" type="password" value={form.confirmPassword} onChange={set("confirmPassword")}
                 placeholder="••••••••" style={s.input} required autoComplete="new-password" />
             </div>
           </div>
