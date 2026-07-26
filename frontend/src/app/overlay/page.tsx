@@ -2,18 +2,19 @@
 
 import { useEffect } from "react";
 import { ConfusionOverlay } from "@/components/overlay/ConfusionOverlay";
+import { LatencyBadge } from "@/components/overlay/LatencyBadge";
 import { useRadarData } from "@/hooks/useRadarData";
 import { useScreenCapture } from "@/hooks/useScreenCapture";
 
 export default function StealthOverlayPage() {
   const lectureId = 1;
-  const { confusionAlert, lastAnalogy, currentTopic } = useRadarData(lectureId);
+  const { confusionAlert, lastAnalogy, currentTopic, latencyBadge } = useRadarData(lectureId);
   const captureState = useScreenCapture();
 
   // Auto-start capture and recording on load (stealth mode)
   useEffect(() => {
     let mounted = true;
-    
+
     const startRecording = async () => {
       try {
         if (!captureState.isCapturing && mounted) {
@@ -24,18 +25,18 @@ export default function StealthOverlayPage() {
         console.error("Failed to start stealth capture:", e);
       }
     };
-    
+
     startRecording();
-    
+
     return () => {
       mounted = false;
       captureState.stopRecording();
     };
-  }, []); // Run once on mount
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const currentAlert = confusionAlert || null;
   const lostCount = currentAlert ? currentAlert.count : 0;
-  
+
   const handleTriggerAnalogy = async () => {
     if (!currentAlert) return;
     try {
@@ -45,8 +46,8 @@ export default function StealthOverlayPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           lecture_id: lectureId,
-          concept_node: currentAlert.concept_node
-        })
+          concept_node: currentAlert.concept_node,
+        }),
       });
     } catch (e) {
       console.error(e);
@@ -55,23 +56,35 @@ export default function StealthOverlayPage() {
 
   return (
     <div style={{ width: "100vw", height: "100vh", overflow: "hidden" }}>
-      {/* 
-        This div wraps the whole page but has no background.
-        The Electron window will be transparent. 
-        Only the ConfusionOverlay itself will be visible.
+      {/*
+        Transparent Electron window — only ConfusionOverlay and LatencyBadge
+        have visible backgrounds. Everything else is click-through.
       */}
       <ConfusionOverlay
-        conceptNode={currentAlert?.concept_node || lastAnalogy?.concept_node || currentTopic || "Waiting for topic..."}
+        conceptNode={
+          currentAlert?.concept_node ||
+          lastAnalogy?.concept_node ||
+          currentTopic ||
+          "Waiting for topic..."
+        }
         lostCount={lostCount}
         totalStudents={20}
         lastAnalogy={lastAnalogy?.analogy_text}
         onTriggerAnalogy={handleTriggerAnalogy}
         visible={true}
         onClose={() => {
-          // In a real Electron app, this might send an IPC message to hide the window
+          // In Electron: send IPC to hide window instead of closing
           window.close();
         }}
       />
+
+      {/*
+        LatencyBadge — audit fix #4.
+        Mounts bottom-right, above the overlay z-stack.
+        Renders only when a latency_badge WS message has arrived (post-Accio).
+        Auto-dismisses after 8s so it doesn't clutter the teacher's screen.
+      */}
+      <LatencyBadge badge={latencyBadge} />
     </div>
   );
 }
