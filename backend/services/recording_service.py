@@ -163,10 +163,17 @@ class RecordingService:
         try:
             from services.knowledge_base import get_knowledge_base
             kb = get_knowledge_base()
-            kb.index_chunk(lecture_id, chunk_id, transcript_text, start_ts)
-            chunk.indexed = True
+            indexed_ok = kb.index_chunk(lecture_id, chunk_id, transcript_text, start_ts)
+            if indexed_ok:
+                chunk.indexed = True
+            else:
+                logger.warning(
+                    "Chunk '%s' (lecture=%d) was NOT indexed to VectorAI DB — "
+                    "check knowledge_base logs for details.",
+                    chunk_id, lecture_id,
+                )
         except Exception as e:
-            logger.error("Failed to index chunk in KB: %s", e)
+            logger.exception("Unexpected error calling kb.index_chunk for chunk '%s'", chunk_id)
 
         return chunk
 
