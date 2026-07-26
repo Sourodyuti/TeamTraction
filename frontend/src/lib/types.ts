@@ -200,7 +200,33 @@ export interface RetrievalHealthResponse {
   vectorai_db: boolean;
   gemini_configured: boolean;
   elevenlabs_configured: boolean;
+  nvidia_configured: boolean;
   ready: boolean;
+}
+
+/** POST /tts/speak response. */
+export interface TTSSpeakResponse {
+  text: string;
+  audio_base64: string | null;
+  mime: string;
+  use_browser_tts: boolean;
+  source: string;
+}
+
+/** GET /videos/recommend/:concept response. */
+export interface VideoResult {
+  title: string;
+  url: string;
+  thumbnail: string;
+  channel: string;
+  description: string;
+  source: string;
+}
+
+export interface VideoResponse {
+  concept: string;
+  videos: VideoResult[];
+  source: string;
 }
 
 /** GET /vision/health. */

@@ -229,11 +229,14 @@ async def retrieval_health() -> dict:
     except Exception:
         pass
 
+    nvidia_configured = bool(settings.nvidia_api_key)
+
     return {
         "embedder": embedder_ok,
         "vectorai_db": vectorai_ok,
         "gemini_configured": gemini_configured,
         "elevenlabs_configured": elevenlabs_configured,
+        "nvidia_configured": nvidia_configured,
         "ready": embedder_ok and vectorai_ok,
     }
 

@@ -27,6 +27,8 @@ from services.hybrid_search import BM25Index, HybridSearchEngine, set_hybrid_eng
 from dependencies import set_embedder, set_vectorai, set_analytics
 from dependencies import get_embedder as _dep_get_embedder, get_vectorai as _dep_get_vectorai
 from routers import websocket, asr, retrieval, analytics, recording, transcription, vision
+from routers.tts import router as tts_router
+from routers.videos import router as videos_router
 from routers.auth import router as auth_router
 
 logger = logging.getLogger(__name__)
@@ -265,6 +267,8 @@ def create_app() -> FastAPI:
     app.include_router(recording.router)
     app.include_router(transcription.router)
     app.include_router(vision.router)
+    app.include_router(tts_router)
+    app.include_router(videos_router)
 
     return app
 

@@ -9,11 +9,14 @@
  *   ⏩ "Slower"    →  sends a 'slower' ping
  *
  * Also receives analogy audio back from Sonorus (Phase 6).
+ * Now with TTS read-aloud and video recommendations.
  */
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useWebSocket } from "@/hooks/useWebSocket";
 import { SignalType } from "@/lib/types";
+import type { VideoResult } from "@/lib/types";
 import { useAuth } from "@/hooks/useAuth";
+import { api } from "@/lib/api";
 import Link from "next/link";
 
 export default function MuffliatoPage() {
@@ -23,8 +26,17 @@ export default function MuffliatoPage() {
   const [studentId, setStudentId] = useState("student_x");
   const { sendPing, lastMessage, connected } = useWebSocket(lectureId);
 
-  const [analogy, setAnalogy] = useState<{text: string; audioUrl?: string} | null>(null);
+  const [analogy, setAnalogy] = useState<{text: string; audioUrl?: string; conceptNode?: string} | null>(null);
   const [avatar, setAvatar] = useState<'cricketer'|'gamer'|'cook'>('cricketer');
+
+  // TTS state
+  const [isSpeaking, setIsSpeaking] = useState(false);
+  const [ttsLoading, setTtsLoading] = useState(false);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+
+  // Video recommendations state
+  const [videos, setVideos] = useState<VideoResult[]>([]);
+  const [videosLoading, setVideosLoading] = useState(false);
 
   // Guard: student route
   useEffect(() => { requireAuth("student"); }, [requireAuth]);
@@ -32,8 +44,8 @@ export default function MuffliatoPage() {
   // Move ALL hooks before the early return on line ~49
   useEffect(() => {
     if (lastMessage?.type === 'analogy_ready') {
-      const { analogy_text, audio_url } = lastMessage as any;
-      setAnalogy({ text: analogy_text, audioUrl: audio_url });
+      const { analogy_text, audio_url, concept_node } = lastMessage as any;
+      setAnalogy({ text: analogy_text, audioUrl: audio_url, conceptNode: concept_node });
       setShowToast(true);
       setTimeout(() => setShowToast(false), 3000);
       if (audio_url) {
@@ -49,6 +61,11 @@ export default function MuffliatoPage() {
           });
         };
         playAudio(audio_url);
+      }
+
+      // Fetch video recommendations for the concept
+      if (concept_node) {
+        fetchVideos(concept_node);
       }
     }
   }, [lastMessage]);
@@ -67,6 +84,99 @@ export default function MuffliatoPage() {
       setStudentId(sid || "student_x");
     }
   }, [user]);
+
+  // Cleanup TTS on unmount
+  useEffect(() => {
+    return () => {
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current = null;
+      }
+      if (typeof window !== "undefined" && window.speechSynthesis) {
+        window.speechSynthesis.cancel();
+      }
+    };
+  }, []);
+
+  // Fetch video recommendations
+  const fetchVideos = useCallback(async (concept: string) => {
+    setVideosLoading(true);
+    try {
+      const resp = await api.videoRecommendations(concept);
+      setVideos(resp.videos);
+    } catch (err) {
+      console.error("Video fetch error:", err);
+      setVideos([]);
+    } finally {
+      setVideosLoading(false);
+    }
+  }, []);
+
+  // TTS: speak text via backend ElevenLabs → browser fallback
+  const speakText = useCallback(async (text: string) => {
+    // If already speaking, stop
+    if (isSpeaking) {
+      stopSpeaking();
+      return;
+    }
+
+    setTtsLoading(true);
+    setIsSpeaking(true);
+
+    try {
+      const resp = await api.ttsSpeak(text);
+
+      if (!resp.use_browser_tts && resp.audio_base64) {
+        // Play ElevenLabs audio
+        const audioSrc = `data:${resp.mime};base64,${resp.audio_base64}`;
+        const audio = new Audio(audioSrc);
+        audioRef.current = audio;
+        audio.onended = () => {
+          setIsSpeaking(false);
+          audioRef.current = null;
+        };
+        audio.onerror = () => {
+          // Fallback to browser TTS
+          browserTTS(text);
+        };
+        await audio.play();
+      } else {
+        // Use browser Speech Synthesis
+        browserTTS(text);
+      }
+    } catch (err) {
+      console.error("TTS error:", err);
+      // Fallback to browser TTS
+      browserTTS(text);
+    } finally {
+      setTtsLoading(false);
+    }
+  }, [isSpeaking]);
+
+  const browserTTS = (text: string) => {
+    if (typeof window === "undefined" || !window.speechSynthesis) {
+      setIsSpeaking(false);
+      return;
+    }
+    window.speechSynthesis.cancel();
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.rate = 0.9;
+    utterance.pitch = 1;
+    utterance.onend = () => setIsSpeaking(false);
+    utterance.onerror = () => setIsSpeaking(false);
+    window.speechSynthesis.speak(utterance);
+  };
+
+  const stopSpeaking = () => {
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current = null;
+    }
+    if (typeof window !== "undefined" && window.speechSynthesis) {
+      window.speechSynthesis.cancel();
+    }
+    setIsSpeaking(false);
+  };
 
   if (authLoading || !user) return <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", color: "#c9a84c", fontSize: "1.5rem" }}>🔮 Verifying...</div>;
 
@@ -153,7 +263,7 @@ export default function MuffliatoPage() {
         </div>
       </section>
 
-      {/* Audio player for incoming analogy */}
+      {/* Audio player for incoming analogy + TTS */}
       <section style={styles.audioSection}>
         {analogy ? (
           <div style={{ display: "flex", flexDirection: "column", gap: "1rem", alignItems: "center" }}>
@@ -161,19 +271,74 @@ export default function MuffliatoPage() {
               {analogy.audioUrl ? "🔊 Accio Analogy!" : "🪄 Analogy Received!"}
             </p>
             <p style={{ fontStyle: "italic", opacity: 0.9 }}>{analogy.text}</p>
-            {analogy.audioUrl && (
+            <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", justifyContent: "center" }}>
+              {analogy.audioUrl && (
+                <button
+                  style={{ ...styles.smallButton }}
+                  onClick={() => new Audio(analogy.audioUrl!).play()}
+                >
+                  🔊 Replay Audio
+                </button>
+              )}
               <button
-                style={{ ...styles.button, minHeight: "40px", padding: "0.5rem 1rem", fontSize: "1rem" }}
-                onClick={() => new Audio(analogy.audioUrl!).play()}
+                style={{
+                  ...styles.smallButton,
+                  background: isSpeaking ? "var(--lost-red)" : "rgba(102, 252, 241, 0.15)",
+                  borderColor: isSpeaking ? "var(--lost-red)" : "var(--accent-cyan, #66FCF1)",
+                }}
+                onClick={() => speakText(analogy.text)}
+                disabled={ttsLoading}
               >
-                Replay Audio
+                {ttsLoading ? "⏳ Loading..." : isSpeaking ? "⏹ Stop" : "🗣️ Read Aloud"}
               </button>
-            )}
+            </div>
           </div>
         ) : (
           <p style={styles.audioHint}>🔊 Waiting for analogy...</p>
         )}
       </section>
+
+      {/* Video Recommendations */}
+      {(videos.length > 0 || videosLoading) && (
+        <section style={styles.videoSection}>
+          <h3 style={styles.videoTitle}>📺 Recommended Videos</h3>
+          {videosLoading ? (
+            <p style={{ opacity: 0.7, textAlign: "center" }}>Loading recommendations...</p>
+          ) : (
+            <div style={styles.videoGrid}>
+              {videos.map((video, idx) => (
+                <a
+                  key={idx}
+                  href={video.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={styles.videoCard}
+                >
+                  {video.thumbnail && (
+                    <div style={styles.videoThumbWrapper}>
+                      <img
+                        src={video.thumbnail}
+                        alt={video.title}
+                        style={styles.videoThumb}
+                        onError={(e) => {
+                          (e.target as HTMLImageElement).style.display = 'none';
+                        }}
+                      />
+                    </div>
+                  )}
+                  <div style={styles.videoInfo}>
+                    <p style={styles.videoName}>{video.title}</p>
+                    <p style={styles.videoChannel}>{video.channel}</p>
+                    {video.description && (
+                      <p style={styles.videoDesc}>{video.description}</p>
+                    )}
+                  </div>
+                </a>
+              ))}
+            </div>
+          )}
+        </section>
+      )}
 
       {/* Back to landing */}
       <footer style={styles.footer}>
@@ -226,6 +391,18 @@ const styles = {
     cursor: "pointer",
     minHeight: "80px",
   },
+  smallButton: {
+    padding: "0.5rem 1rem",
+    fontSize: "0.95rem",
+    fontWeight: 600,
+    color: "white",
+    background: "rgba(255,255,255,0.08)",
+    border: "1px solid var(--gryffindor-gold)",
+    borderRadius: "10px",
+    cursor: "pointer",
+    minHeight: "40px",
+    transition: "all 0.2s",
+  },
   avatarPicker: {
     margin: "2rem 0",
     padding: "1rem",
@@ -277,6 +454,84 @@ const styles = {
     margin: 0,
     color: "var(--gryffindor-gold)",
     fontStyle: "italic",
+  },
+  // Video recommendation styles
+  videoSection: {
+    width: "100%",
+    maxWidth: "360px",
+    margin: "1rem 0",
+    padding: "1rem",
+    background: "rgba(102, 252, 241, 0.05)",
+    border: "1px solid rgba(102, 252, 241, 0.2)",
+    borderRadius: "12px",
+  },
+  videoTitle: {
+    margin: "0 0 0.75rem 0",
+    fontSize: "1.1rem",
+    color: "var(--gryffindor-gold)",
+    textAlign: "center" as const,
+  },
+  videoGrid: {
+    display: "flex",
+    flexDirection: "column" as const,
+    gap: "0.75rem",
+  },
+  videoCard: {
+    display: "flex",
+    gap: "0.75rem",
+    padding: "0.6rem",
+    background: "rgba(255,255,255,0.05)",
+    borderRadius: "8px",
+    textDecoration: "none",
+    color: "inherit",
+    border: "1px solid rgba(255,255,255,0.08)",
+    transition: "all 0.2s",
+    cursor: "pointer",
+  },
+  videoThumbWrapper: {
+    flexShrink: 0,
+    width: "100px",
+    height: "56px",
+    borderRadius: "6px",
+    overflow: "hidden",
+    background: "rgba(0,0,0,0.3)",
+  },
+  videoThumb: {
+    width: "100%",
+    height: "100%",
+    objectFit: "cover" as const,
+  },
+  videoInfo: {
+    display: "flex",
+    flexDirection: "column" as const,
+    gap: "0.15rem",
+    minWidth: 0,
+    flex: 1,
+  },
+  videoName: {
+    margin: 0,
+    fontSize: "0.85rem",
+    fontWeight: 600,
+    lineHeight: 1.3,
+    color: "rgba(255,255,255,0.9)",
+    overflow: "hidden" as const,
+    textOverflow: "ellipsis" as const,
+    display: "-webkit-box",
+    WebkitLineClamp: 2,
+    WebkitBoxOrient: "vertical" as const,
+  },
+  videoChannel: {
+    margin: 0,
+    fontSize: "0.75rem",
+    color: "rgba(255,255,255,0.5)",
+  },
+  videoDesc: {
+    margin: 0,
+    fontSize: "0.72rem",
+    color: "rgba(255,255,255,0.4)",
+    overflow: "hidden" as const,
+    textOverflow: "ellipsis" as const,
+    whiteSpace: "nowrap" as const,
   },
   footer: {
     marginTop: "2rem",
