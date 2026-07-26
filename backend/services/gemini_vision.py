@@ -140,7 +140,7 @@ class GeminiVisionClient:
         mime_type: str,
         question: str | None
     ) -> tuple[dict[str, Any], float]:
-        """Fallback to Nvidia NIM Vision model."""
+        """Fallback to Nvidia NIM Vision model with EXIF rotation and OCR."""
         start = time.perf_counter()
         api_key = settings.nvidia_api_key
         if not api_key:
@@ -150,16 +150,41 @@ class GeminiVisionClient:
         import base64
         import httpx
         import json
+        import io
+        from PIL import Image, ImageOps
+        import pytesseract
 
-        b64_image = base64.b64encode(image_bytes).decode("utf-8")
+        try:
+            # 1. Open image and fix EXIF rotation
+            img = Image.open(io.BytesIO(image_bytes))
+            img = ImageOps.exif_transpose(img)
+            
+            # 2. Extract perfectly oriented text via local OCR
+            ocr_text = pytesseract.image_to_string(img)
+            
+            # 3. Downscale for the API to prevent massive payloads
+            img.thumbnail((1024, 1024))
+            buffer = io.BytesIO()
+            img.save(buffer, format="JPEG", quality=85)
+            optimized_bytes = buffer.getvalue()
+            b64_image = base64.b64encode(optimized_bytes).decode("utf-8")
+        except Exception as e:
+            logger.error("Failed to process image with PIL/OCR: %s", e)
+            b64_image = base64.b64encode(image_bytes).decode("utf-8")
+            ocr_text = ""
         
         if question:
             from services.knowledge_base import get_knowledge_base
             hits = get_knowledge_base().search_knowledge(question, lecture_id=1, limit=3)
             context_str = "\n".join([str(h) for h in hits]) if hits else "None"
-            prompt = _ASK_PROMPT.format(question=question, context=context_str)
+            base_prompt = _ASK_PROMPT.format(question=question, context=context_str)
         else:
-            prompt = _CONTEXT_PROMPT
+            base_prompt = _CONTEXT_PROMPT
+
+        if ocr_text:
+            prompt = f"I have run local OCR on this image. OCR Text:\n{ocr_text}\n\nBased on the image and this exact OCR text, {base_prompt}"
+        else:
+            prompt = base_prompt
 
         headers = {
             "Authorization": f"Bearer {api_key}",
