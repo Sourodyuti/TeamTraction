@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 20" width="100%" height="20">
+  <defs>
+    <filter id="glow">
+      <feGaussianBlur stdDeviation="3" result="blur" />
+      <feMerge>
+        <feMergeNode in="blur" />
+        <feMergeNode in="SourceGraphic" />
+      </feMerge>
+    </filter>
+    <linearGradient id="wandTrail" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="transparent" />
+      <stop offset="50%" stop-color="#849eff" />
+      <stop offset="100%" stop-color="transparent" />
+    </linearGradient>
+  </defs>
+  
+  <rect x="0" y="9" width="1000" height="1" fill="url(#wandTrail)" opacity="0.4" />
+  
+  <circle cy="9.5" r="3" fill="#ffffff" filter="url(#glow)">
+    <animate attributeName="cx" values="-50; 1050; -50" dur="10s" repeatCount="indefinite" />
+  </circle>
+  <circle cy="9.5" r="1.5" fill="#c4d4ff" filter="url(#glow)">
+    <animate attributeName="cx" values="1050; -50; 1050" dur="8s" repeatCount="indefinite" begin="2s" />
+  </circle>
+</svg>

@@ -1,24 +1,28 @@
-# Legilimens (Team Traction)
+<div align="center">
+  <picture>
+    <img alt="Legilimens 3D Animated Banner" src="./assets/banner.svg" width="100%">
+  </picture>
+</div>
 
-> A real-time "mind-reading" layer for live classrooms. It detects *where* and *when* students collectively get lost, then instantly re-explains that exact moment using a freshly-generated analogy pulled from each student's own interest graph — with all retrieval running **on-prem on Actian VectorAI DB** so student data never leaves the building.
+> A real-time "mind-reading" layer for live classrooms. It detects *where* and *when* students collectively get lost, then instantly re-explains that exact moment using a freshly-generated analogy pulled from each student's own interest graph — with all retrieval running **on-prem on Actian VectorAI DB** so student data never leaves the castle.
 
 *"Professors, you've all taught a room where 40% silently drowned — and you never knew. **Legilimens** is the radar that catches it, and the spell that fixes it, in under a second, on the school's own server."*
 
----
+![Divider](./assets/divider.svg)
 
-##  Purpose
+## 📜 The Prophecy (Purpose)
 
-In large lectures, students often hesitate to interrupt a professor to say "I don't get it." As a result, professors power through material while a silent majority falls behind. 
+In the Grand Halls of learning, students often hesitate to interrupt a professor to say "I don't get it." As a result, professors power through material while a silent majority falls into the abyss. 
 
-**Legilimens** acts as a silent feedback loop between students and educators. When multiple students indicate confusion (via a simple web button), the system:
-1. **Captures** the exact audio, video frames, and transcript of what the professor was teaching at that second.
-2. **Retrieves** past analogies or contextual chunks from the school's localized knowledge base.
-3. **Generates** a custom, deeply resonant analogy based on the student's personal interests (e.g., explaining pointers using basketball or cooking).
+**Legilimens** acts as a silent, telepathic feedback loop between students and Headmasters. When multiple students indicate confusion (via a simple web button), the system:
+1. **Captures** the exact audio, video frames, and transcript of what the professor was teaching at that exact second.
+2. **Retrieves** past analogies or contextual chunks from the school's localized knowledge vault (the Room of Requirement).
+3. **Generates** a custom, deeply resonant analogy based on the student's personal interests (e.g., explaining pointers using Quidditch or potion brewing).
 4. **Delivers** this analogy back to the confused student instantly via text and voice, without interrupting the flow of the class.
 
----
+![Divider](./assets/divider.svg)
 
-##  How We Achieve This
+## ⚡ The Magic Behind the Veil (How We Achieve This)
 
 We achieve this through a highly optimized, dual-layer architecture combining **edge-based semantic retrieval** and **cloud-based generative AI**.
 
@@ -30,11 +34,11 @@ We achieve this through a highly optimized, dual-layer architecture combining **
 6. **Voice Synthesis:** The personalized analogy is synthesized into natural speech via **ElevenLabs** and played quietly to the student.
 7. **Teacher Analytics:** Post-lecture, the professor uses the **Pensieve Dashboard**, powered by Actian Vector Analytics (columnar SQL), to review the most confusing moments of the lecture.
 
----
+![Divider](./assets/divider.svg)
 
-##  Technical Breakdown
+## 🪄 The Spellbook (Technical Breakdown)
 
-Built for a Harry-Potter-themed hackathon, every component carries a spell name reflecting its role:
+Built for a Harry-Potter-themed hackathon, every component carries a spell name reflecting its magical role:
 
 | Spell | Component | Technical Implementation | Purpose |
 |---|---|---|---|
@@ -45,17 +49,17 @@ Built for a Harry-Potter-themed hackathon, every component carries a spell name 
 | **Sonorus** | Voice Re-delivery | ElevenLabs TTS | Speaks the analogy back calmly and clearly. |
 | **Pensieve** | Teacher Analytics | Actian Vector (Columnar SQL) | Re-view the lecture's worst moments and re-teach plans. |
 
----
+![Divider](./assets/divider.svg)
 
-##  System Architecture Flowchart
+## 🏗️ The Enchanted Architecture
 
 ```mermaid
 flowchart TD
   %% Edge / Classroom Layer
   subgraph EDGE ["1. Edge / Classroom (Student Phones + 1 Pi)"]
-    P1[" Student Phone<br/>(Muffliato PWA)"]
-    P2[" Whisper.cpp<br/>(Local ASR)"]
-    P3[" Pi / Laptop<br/>(Screen/Video Capture)"]
+    P1["📱 Student Phone<br/>(Muffliato PWA)"]
+    P2["🎤 Whisper.cpp<br/>(Local ASR)"]
+    P3["🍓 Pi / Laptop<br/>(Screen/Video Capture)"]
   end
 
   %% On-Prem School Server Layer
@@ -113,19 +117,19 @@ flowchart TD
   class UI ui
 ```
 
----
+![Divider](./assets/divider.svg)
 
-##  Setup & Bring-Up Instructions
+## 🗺️ The Marauder's Guide to Setup
 
-Follow these steps to run the complete Legilimens stack locally.
+Follow these steps to brew the complete Legilimens stack locally.
 
-### 1. Prerequisites
+### 1. Requirements (The Ingredients)
 - **Docker** and **Docker Compose**
 - **Node.js** (v18+) and **npm**
 - **Python 3.10+**
 
 ### 2. Environment Variables & API Keys
-Before starting, you must configure your API keys.
+Before casting your first spell, you must configure your API keys.
 
 1. Navigate to the `backend` directory.
 2. Copy the `.env.example` file to `.env`:
@@ -135,7 +139,7 @@ Before starting, you must configure your API keys.
    ```
 3. Open `.env` and fill in the required keys.
 
-####  Required API Keys:
+#### 🗝️ Required API Keys:
 | Service | Purpose | How to Get It |
 |---|---|---|
 | **Gemini API Key** | Primary Analogy Engine | Get a free key from [Google AI Studio](https://aistudio.google.com/). |
@@ -143,14 +147,14 @@ Before starting, you must configure your API keys.
 | **ElevenLabs API Key** | Voice Synthesis (TTS) | Create an account at [ElevenLabs](https://elevenlabs.io/) and generate an API key in your profile settings. |
 | **MongoDB URI** | User Auth / Profiles | Create a free cluster on [MongoDB Atlas](https://www.mongodb.com/atlas), grab the connection string, and replace `<password>` with your database user password. |
 
-### 3. Start the Actian VectorAI Database
+### 3. Summon the Actian VectorAI Database
 We use Docker to spin up the Actian DB locally. Ensure Docker is running.
 ```bash
 # Accept the EULA and run Actian VectorAI DB on ports 6573-6575
 docker run -d --name vectorai -p 6573-6575:6573-6575 -e ACTIAN_VECTORAI_ACCEPT_EULA=YES actian/vectorai:latest
 ```
 
-### 4. Start the FastAPI Backend
+### 4. Ignite the FastAPI Backend
 Open a new terminal window:
 ```bash
 cd backend
@@ -159,16 +163,16 @@ source .venv/bin/activate
 pip install -r requirements.txt
 uvicorn main:app --reload --host 0.0.0.0 --port 8000
 ```
-> The API will be available at `http://localhost:8000`. You can view the swagger docs at `http://localhost:8000/docs`.
+> The API will be available at `http://localhost:8000`. You can view the spellbook at `http://localhost:8000/docs`.
 
-### 5. Start the Next.js Frontend
+### 5. Launch the Next.js Frontend
 Open a new terminal window:
 ```bash
 cd frontend
 npm install
 npm run dev
 ```
-> The web interface will be available at `http://localhost:3000`.
+> The magical web interface will be available at `http://localhost:3000`.
 
 ### 6. Local ASR (Whisper.cpp) - *Optional Stretch Goal*
 The core demo utilizes a pre-recorded, pre-transcribed lecture. If you wish to run live ASR on an edge device:
@@ -178,9 +182,9 @@ cd whisper.cpp && make base.en
 ./main -m models/ggml-base.en.bin -f audio.wav
 ```
 
----
+![Divider](./assets/divider.svg)
 
-##  Sponsor Tracks
+## 🏆 Sponsor Tracks (The Hogwarts Houses)
 This project was proudly built targeting the **Education** track, leveraging:
 - **Actian** (Primary DB + Vector Search)
 - **Gemini** (Primary LLM Engine)
@@ -189,5 +193,5 @@ This project was proudly built targeting the **Education** track, leveraging:
 - **MongoDB** (User Graph)
 - **GitHub** (Version Control)
 
-## ⚖️ License
+## ⚖️ The Ministry License
 MIT License — Copyright (c) 2026 Sourodyuti Biswas Sanyal. See [`LICENSE`](./LICENSE).
