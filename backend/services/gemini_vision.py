@@ -159,6 +159,7 @@ class GeminiVisionClient:
         import httpx
         import json
         import io
+        import re
         from PIL import Image, ImageOps
         import pytesseract
 
