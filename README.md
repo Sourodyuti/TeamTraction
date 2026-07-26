@@ -1,7 +1,5 @@
 # Legilimens (Team Traction)
 
-![Legilimens Logo/Header](https://via.placeholder.com/1200x300?text=Legilimens+-+Real-time+Classroom+Mind-Reading)
-
 > A real-time "mind-reading" layer for live classrooms. It detects *where* and *when* students collectively get lost, then instantly re-explains that exact moment using a freshly-generated analogy pulled from each student's own interest graph — with all retrieval running **on-prem on Actian VectorAI DB** so student data never leaves the building.
 
 *"Professors, you've all taught a room where 40% silently drowned — and you never knew. **Legilimens** is the radar that catches it, and the spell that fixes it, in under a second, on the school's own server."*
