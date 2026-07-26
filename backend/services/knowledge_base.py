@@ -1,4 +1,5 @@
 import logging
+import threading
 import uuid
 from typing import Optional
 
@@ -11,6 +12,7 @@ class KnowledgeBase:
     def __init__(self):
         # {lecture_id: [{chunk_id, topic_node, ts, text_preview}]}
         self._index: dict[int, list[dict]] = {}
+        self._lock = threading.Lock()
 
     def index_chunk(
         self,
@@ -40,20 +42,22 @@ class KnowledgeBase:
                     "difficulty": difficulty,
                 }
             }
-            vectorai.upsert_chunks([point])
+            if vectorai:
+                vectorai.upsert_chunks([point])
 
-            if lecture_id not in self._index:
-                self._index[lecture_id] = []
-            
-            self._index[lecture_id].append({
-                "chunk_id": chunk_id,
-                "topic_node": topic_node,
-                "ts": ts,
-                "text_preview": text[:256]
-            })
-            
-            # Keep index sorted by ts for safety
-            self._index[lecture_id].sort(key=lambda x: x["ts"])
+            with self._lock:
+                if lecture_id not in self._index:
+                    self._index[lecture_id] = []
+                
+                self._index[lecture_id].append({
+                    "chunk_id": chunk_id,
+                    "topic_node": topic_node,
+                    "ts": ts,
+                    "text_preview": text[:256]
+                })
+                
+                # Keep index sorted by ts for safety
+                self._index[lecture_id].sort(key=lambda x: x["ts"])
             
             logger.info("KnowledgeBase indexed chunk %s for lecture %s", chunk_id, lecture_id)
             return True
@@ -64,13 +68,14 @@ class KnowledgeBase:
 
     def get_knowledge_for_concept(self, lecture_id: int, concept_node: str, limit: int = 5) -> list[dict]:
         """Returns the most recent N chunks for that concept from the in-memory index."""
-        if lecture_id not in self._index:
-            return []
-            
-        matches = [c for c in self._index[lecture_id] if c["topic_node"] == concept_node]
-        # Most recent first
-        matches.reverse()
-        return matches[:limit]
+        with self._lock:
+            if lecture_id not in self._index:
+                return []
+                
+            matches = [c for c in self._index[lecture_id] if c["topic_node"] == concept_node]
+            # Most recent first
+            matches.reverse()
+            return matches[:limit]
 
     def search_knowledge(self, query_text: str, lecture_id: int, limit: int = 3) -> list[LectureChunk]:
         """Embed query, run VectorAI DB search filtered by lecture_id in payload."""

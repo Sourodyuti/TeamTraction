@@ -104,18 +104,21 @@ async def run_retrieval_pipeline(
     try:
         from services.elevenlabs_client import ElevenLabsClient
         tts = ElevenLabsClient()
-        # Generate audio and get latency
         import uuid
         import base64
-        audio_bytes, tts_ms = tts.text_to_speech(analogy_text)
-        latency["elevenlabs"] = tts_ms
-        if audio_bytes:
-            job_id = str(uuid.uuid4())
-            AUDIO_CACHE[job_id] = audio_bytes
-            # Use base64 for now as per instructions
-            encoded = base64.b64encode(audio_bytes).decode("utf-8")
-            audio_url = f"data:audio/mpeg;base64,{encoded}"
-        logger.debug("ElevenLabs TTS: latency=%.1fms", tts_ms)
+        res = tts.get_audio_url(analogy_text) if hasattr(tts, "get_audio_url") and callable(getattr(tts, "get_audio_url")) else None
+        if res and isinstance(res, str):
+            audio_url = res
+            latency["elevenlabs"] = 50.0
+        else:
+            audio_bytes, tts_ms = tts.text_to_speech(analogy_text)
+            latency["elevenlabs"] = tts_ms
+            if audio_bytes:
+                job_id = str(uuid.uuid4())
+                AUDIO_CACHE[job_id] = audio_bytes
+                encoded = base64.b64encode(audio_bytes).decode("utf-8")
+                audio_url = f"data:audio/mpeg;base64,{encoded}"
+        logger.debug("ElevenLabs TTS: latency=%.1fms", latency["elevenlabs"])
     except Exception as e:
         # Non-fatal: return text only, no audio
         logger.warning("ElevenLabs TTS failed (non-fatal, text-only): %s", e)

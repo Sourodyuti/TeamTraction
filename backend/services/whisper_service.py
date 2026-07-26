@@ -44,25 +44,33 @@ class WhisperService:
         return full_text, info.duration
 
     def transcribe_bytes(self, audio_bytes: bytes, language: str = "en") -> tuple[str, list[dict]]:
-        """Transcribe audio bytes (write to temp file), returns (full_text, [{start, end, text}] segments)."""
-        if not self._available:
+        """Transcribe audio bytes safely, returning (full_text, [{start, end, text}] segments)."""
+        if not self._available or not audio_bytes:
             return "", []
-            
-        with tempfile.NamedTemporaryFile(suffix=".webm", delete=False) as f:
-            f.write(audio_bytes)
-            tmp_path = f.name
-            
+
+        tmp_path = None
         try:
+            with tempfile.NamedTemporaryFile(suffix=".webm", delete=False) as f:
+                f.write(audio_bytes)
+                tmp_path = f.name
+
             segments_iter, info = self._model.transcribe(tmp_path, beam_size=5, language=language)
             segments = []
             full_text = []
             for s in segments_iter:
                 segments.append({"start": s.start, "end": s.end, "text": s.text})
                 full_text.append(s.text)
-            
+
             return " ".join(full_text), segments
+        except Exception as e:
+            logger.error("Whisper transcription failed: %s", e)
+            return "", []
         finally:
-            os.remove(tmp_path)
+            if tmp_path and os.path.exists(tmp_path):
+                try:
+                    os.remove(tmp_path)
+                except Exception:
+                    pass
 
     def transcribe_stream_chunk(self, audio_bytes: bytes) -> str:
         """Transcribes a short chunk, returns just the text."""

@@ -39,7 +39,8 @@ export default function StealthOverlayPage() {
   const handleTriggerAnalogy = async () => {
     if (!currentAlert) return;
     try {
-      await fetch("http://localhost:8001/retrieval/accio", {
+      const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8001";
+      await fetch(`${baseUrl}/retrieval/accio`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

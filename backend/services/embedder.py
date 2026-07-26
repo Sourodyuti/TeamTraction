@@ -81,3 +81,9 @@ class Embedder:
         vec = self.encode(text)[0]
         elapsed_ms = (time.perf_counter() - start) * 1000
         return vec, elapsed_ms
+
+    async def async_encode_with_latency(self, text: str) -> tuple[list[float], float]:
+        """Async offloaded encode for non-blocking FastAPI event loops."""
+        import asyncio
+        return await asyncio.to_thread(self.encode_with_latency, text)
+
