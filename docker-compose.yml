@@ -1,26 +1,27 @@
-# Legilimens — Docker Compose
-# Brings up: Actian VectorAI DB (on-prem retrieval) + Actian Vector Community (columnar analytics) + FastAPI orchestrator.
+# Legilimens — Docker Compose (on-prem school server)
+# Brings up: Actian VectorAI DB + Actian Vector Analytics + FastAPI + Next.js frontend.
+#
+# For DigitalOcean deployment (cloud-only, no Actian containers),
+# use `do.app.yaml` or `docker-compose.prod.yml`.
 #
 # Actian VectorAI DB: actian/vectorai:latest (Community Edition with 30-day trial)
 #   - REST on 6573, gRPC on 6574, LocalUI on 6575
-#   - License key: ***REDACTED_ACTIAN_LICENSE_KEY***
 # Actian Vector: actian/vector5.0:community (columnar SQL)
 
 services:
   # ───────────────────────────────────────────────────────────────
-  # Actian VectorAI DB — the retrieval brain (on-prem, air-gapped-capable)
-  # REST on 6573, gRPC on 6574, LocalUI on 6575
+  # Actian VectorAI DB — the retrieval brain (on-prem, air-gapped)
   # ───────────────────────────────────────────────────────────────
   vectorai-db:
     image: actian/vectorai:latest
     container_name: legilimens-vectorai
     ports:
-      - "6573:6573"   # REST API
-      - "6574:6574"   # gRPC (Python SDK default)
-      - "6575:6575"   # LocalUI (http://localhost:6575)
+      - "6573:6573"
+      - "6574:6574"
+      - "6575:6575"
     environment:
       - ACTIAN_VECTORAI_ACCEPT_EULA=YES
-      - ACTIAN_VECTORAI_LICENSE_KEY=***REDACTED_ACTIAN_LICENSE_KEY***
+      - ACTIAN_VECTORAI_LICENSE_KEY=${ACTIAN_LICENSE_KEY:-***REDACTED_ACTIAN_LICENSE_KEY***}
     volumes:
       - vectorai-data:/var/lib/actian-vectorai
     restart: unless-stopped
@@ -31,22 +32,21 @@ services:
       retries: 10
 
   # ───────────────────────────────────────────────────────────────
-  # Actian Vector (Analytics Engine) — columnar SQL for confusion time-series.
-  # Community image per blueprint.
+  # Actian Vector (Analytics Engine) — columnar SQL for confusion
   # ───────────────────────────────────────────────────────────────
   actian-vector:
     image: actian/vector5.0:community
     container_name: legilimens-vector
+    profiles:
+      - onprem
     ports:
-      # Default SQL access port for Actian Vector
       - "5432:5432"
     volumes:
       - vector-data:/actian/vector/data
     restart: unless-stopped
 
   # ───────────────────────────────────────────────────────────────
-  # FastAPI orchestrator — WebSocket hub + REST + retrieval/analytics.
-  # Runs the app from ./backend via uvicorn.
+  # FastAPI orchestrator — WebSocket hub + REST + retrieval
   # ───────────────────────────────────────────────────────────────
   fastapi:
     build:
@@ -56,22 +56,35 @@ services:
     depends_on:
       vectorai-db:
         condition: service_healthy
-      actian-vector:
-        condition: service_started
     environment:
       VECTORAI_HOST: vectorai-db
       VECTORAI_PORT: "6574"
       VECTOR_HOST: actian-vector
       VECTOR_PORT: "5432"
-      # GEMINI_API_KEY / ELEVENLABS_API_KEY loaded from .env
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      NVIDIA_API_KEY: ${NVIDIA_API_KEY:-}
+      ELEVENLABS_API_KEY: ${ELEVENLABS_API_KEY:-}
     env_file:
       - .env
     ports:
       - "8001:8001"
-    volumes:
-      # Dev: live-reload the backend source
-      - ./backend:/app
-    command: uvicorn main:app --host 0.0.0.0 --port 8001 --reload
+    command: uvicorn main:app --host 0.0.0.0 --port 8001
+    restart: unless-stopped
+
+  # ───────────────────────────────────────────────────────────────
+  # Next.js Frontend — teacher dashboard + student PWA
+  # ───────────────────────────────────────────────────────────────
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: http://localhost:8001
+    container_name: legilimens-frontend
+    ports:
+      - "3000:3000"
+    depends_on:
+      - fastapi
     restart: unless-stopped
 
 volumes:

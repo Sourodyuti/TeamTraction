@@ -1,0 +1,92 @@
+# Legilimens — DigitalOcean App Platform spec
+# Deploy: `doctl apps create --spec do.app.yaml`
+# Or paste into DO App Platform console.
+#
+# Architecture:
+#   - backend:  FastAPI service (Dockerfile at ./backend)
+#   - frontend: Next.js static site (uses node:20 build)
+#
+# ⚠️  Actian VectorAI DB stays ON-PREM (school server).
+#     The DO backend connects to it via VECTORAI_HOST / VECTORAI_PORT env vars
+#     pointing to the on-prem server's public IP / tailscale address.
+
+name: legilimens
+region: blr  # Bangalore — closest to typical Indian school server
+
+services:
+  # ─── FastAPI Backend ───────────────────────────────────────────
+  - name: backend
+    environment_slug: python
+    github:
+      branch: main
+      repo: Sourodyuti/TeamTraction
+      deploy_on_push: true
+    dockerfile_path: backend/Dockerfile
+    source_dir: backend
+    http_port: 8001
+    instance_count: 1
+    instance_size_slug: professional-xs
+    envs:
+      - key: VECTORAI_HOST
+        value: ${VECTORAI_HOST}
+        scope: RUN_TIME
+      - key: VECTORAI_PORT
+        value: "6574"
+        scope: RUN_TIME
+      - key: VECTORAI_COLLECTION
+        value: lecture_chunks
+        scope: RUN_TIME
+      - key: GEMINI_API_KEY
+        value: ${GEMINI_API_KEY}
+        scope: RUN_TIME
+        type: SECRET
+      - key: NVIDIA_API_KEY
+        value: ${NVIDIA_API_KEY}
+        scope: RUN_TIME
+        type: SECRET
+      - key: ELEVENLABS_API_KEY
+        value: ${ELEVENLABS_API_KEY}
+        scope: RUN_TIME
+        type: SECRET
+      - key: CORS_ORIGINS
+        value: '["https://${APP_DOMAIN}","https://*.ondigitalocean.app"]'
+        scope: RUN_TIME
+      - key: LEGILIMENS_SECRET
+        value: ${LEGILIMENS_SECRET}
+        scope: RUN_TIME
+        type: SECRET
+      - key: MONGODB_URI
+        value: ${MONGODB_URI}
+        scope: RUN_TIME
+        type: SECRET
+      - key: LEGILIMENS_ENV
+        value: production
+        scope: RUN_TIME
+    health_check:
+      http_path: /health
+      initial_delay_seconds: 30
+      period_seconds: 20
+      timeout_seconds: 10
+
+  # ─── Next.js Frontend ──────────────────────────────────────────
+  - name: frontend
+    environment_slug: node-js
+    github:
+      branch: main
+      repo: Sourodyuti/TeamTraction
+      deploy_on_push: true
+    source_dir: frontend
+    build_command: npm run build
+    run_command: node server.js
+    http_port: 3000
+    instance_count: 1
+    instance_size_slug: professional-xs
+    envs:
+      - key: NEXT_PUBLIC_API_URL
+        value: https://${BACKEND_APP_URL}
+        scope: RUN_TIME
+    health_check:
+      http_path: /
+      initial_delay_seconds: 30
+      period_seconds: 20
+      timeout_seconds: 10

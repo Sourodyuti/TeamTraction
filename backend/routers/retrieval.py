@@ -84,16 +84,16 @@ async def run_retrieval_pipeline(
         logger.error("Retrieval failed: %s", e)
         raise HTTPException(status_code=503, detail=f"Retrieval service unavailable: {e}")
 
-    # ─── 3. Rewrite as an analogy via Gemini ───────────────────────
+    # ─── 3. Rewrite as an analogy via Gemini (fallback → NVIDIA NIM) ──
     analogy_text = best_text
     try:
         from services.gemini_client import GeminiClient
         gemini = GeminiClient()
-        analogy_text, gemini_ms = gemini.rewrite_analogy(concept_node, best_text, avatar)
+        analogy_text, gemini_ms = await gemini.rewrite_analogy(concept_node, best_text, avatar)
         latency["gemini"] = gemini_ms
-        logger.debug("Gemini rewrite: %.1fms", gemini_ms)
+        logger.debug("Gemini/NVIDIA rewrite: %.1fms", gemini_ms)
     except Exception as e:
-        logger.warning("Gemini rewrite failed (non-fatal, using raw text): %s", e)
+        logger.warning("LLM rewrite failed (non-fatal, using raw text): %s", e)
         latency["gemini"] = 0.0
 
     # ─── 4. Convert to speech via ElevenLabs ───────────────────────

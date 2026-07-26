@@ -3,8 +3,9 @@
 Takes a retrieved explanation + student interest avatar and asks Gemini
 to rewrite it as a 2-sentence analogy in the student's language.
 
-Uses `google-genai` SDK. Falls back to raw retrieved text if Gemini is slow/down
-or if the API key is not configured.
+Uses `google-genai` SDK. Chain-falls back to NVIDIA NIM if Gemini is
+rate-limited (429) or otherwise unavailable. If both fail, returns
+the raw retrieved text.
 """
 from __future__ import annotations
 
@@ -60,7 +61,7 @@ class GeminiClient:
         """True if the Gemini client is initialized and ready."""
         return self._client is not None
 
-    def rewrite_analogy(
+    async def rewrite_analogy(
         self,
         concept_node: str,
         original_text: str,
@@ -70,7 +71,10 @@ class GeminiClient:
 
         Returns (analogy_text, latency_ms).
 
-        Fallback: if API fails or key is missing, returns original_text unchanged.
+        Chain-fallback:
+          1. Try Gemini (with retries)
+          2. If Gemini fails (429 quota / error), try NVIDIA NIM
+          3. If both fail, return original_text unchanged.
         """
         if not self.available:
             logger.warning("Gemini unavailable — returning raw explanation")
@@ -115,10 +119,25 @@ class GeminiClient:
                 if attempt < _MAX_RETRIES:
                     time.sleep(_RETRY_DELAY_S * attempt)
 
-        # All retries exhausted — fallback
-        logger.error(
-            "Gemini failed after %d attempts: %s — returning raw explanation",
+        # All retries exhausted — try NVIDIA fallback
+        logger.warning(
+            "Gemini failed after %d attempts: %s — trying NVIDIA fallback",
             _MAX_RETRIES,
             last_error,
         )
+
+        try:
+            from services.nvidia_client import NvidiaClient
+
+            nvidia = NvidiaClient()
+            analogy_text, nv_ms = await nvidia.rewrite_analogy(
+                concept_node, original_text, avatar,
+            )
+            if analogy_text != original_text:
+                logger.info("NVIDIA fallback succeeded (%.0fms)", nv_ms)
+                return analogy_text, nv_ms
+        except Exception as nv_err:
+            logger.warning("NVIDIA fallback also failed: %s", nv_err)
+
+        logger.error("All LLM backends failed — returning raw explanation")
         return original_text, 0.0
