@@ -10,7 +10,9 @@
 
 ![Divider](./assets/divider.svg)
 
-## 📜 The Prophecy (Purpose)
+<div align="center">
+  <img alt="The Prophecy" src="./assets/h-prophecy.svg" width="60%">
+</div>
 
 In the Grand Halls of learning, students often hesitate to interrupt a professor to say "I don't get it." As a result, professors power through material while a silent majority falls into the abyss. 
 
@@ -22,7 +24,9 @@ In the Grand Halls of learning, students often hesitate to interrupt a professor
 
 ![Divider](./assets/divider.svg)
 
-## ⚡ The Magic Behind the Veil (How We Achieve This)
+<div align="center">
+  <img alt="The Magic Behind the Veil" src="./assets/h-magic.svg" width="80%">
+</div>
 
 We achieve this through a highly optimized, dual-layer architecture combining **edge-based semantic retrieval** and **cloud-based generative AI**.
 
@@ -36,7 +40,9 @@ We achieve this through a highly optimized, dual-layer architecture combining **
 
 ![Divider](./assets/divider.svg)
 
-## 🪄 The Spellbook (Technical Breakdown)
+<div align="center">
+  <img alt="The Spellbook" src="./assets/h-spellbook.svg" width="60%">
+</div>
 
 Built for a Harry-Potter-themed hackathon, every component carries a spell name reflecting its magical role:
 
@@ -51,75 +57,90 @@ Built for a Harry-Potter-themed hackathon, every component carries a spell name 
 
 ![Divider](./assets/divider.svg)
 
-## 🏗️ The Enchanted Architecture
+<div align="center">
+  <img alt="The Enchanted Architecture" src="./assets/h-architecture.svg" width="80%">
+  <img alt="Architecture SVG" src="./assets/arch.svg" width="100%">
+</div>
+
+<details>
+<summary><b>📜 Click here to view the Architecture Diagram in ASCII format (Mobile Friendly Fallback)</b></summary>
+<br>
+
+```text
++-------------------------------------------------+
+|         1. THE EDGE (Classroom Layer)           |
+|                                                 |
+|  [📱 Student Phones]      [🎤 Whisper.cpp ASR]  |
+|    (Muffliato PWA)         (Captures Spells)    |
+|             \                     /             |
+|              v                   v              |
+|       [🍓 Raspberry Pi / Capture Device]        |
++----------------------|--------------------------+
+                       | (Data flow)
++----------------------V--------------------------+
+|       2. THE SCHOOL VAULT (On-Prem Server)      |
+|                                                 |
+|  [FastAPI Orchestrator] <--> [Local Embedder]   |
+|            |                   (bge-small)      |
+|            v                                    |
+| [Actian VectorAI DB] <--> [Actian Vector SQL]   |
+| (Semantic Retrieval)      (Analytics Engine)    |
++----------------------|--------------------------+
+                       | (Generative RAG)
++----------------------V--------------------------+
+|          3. THE CLOUD (Magic Layer)             |
+|                                                 |
+|  [Google Gemini API]  OR  [NVIDIA Llama 3.2]    |
+|   (Analogy Creator)       (Vision Fallback)     |
+|                      |                          |
+|             [ElevenLabs TTS]                    |
+|             (Voice Synthesis)                   |
++-------------------------------------------------+
+```
+</details>
+
+<details>
+<summary><b>📜 Click here to view the Architecture Diagram in Mermaid flowchart</b></summary>
+<br>
 
 ```mermaid
 flowchart TD
-  %% Edge / Classroom Layer
-  subgraph EDGE ["1. Edge / Classroom (Student Phones + 1 Pi)"]
-    P1["📱 Student Phone<br/>(Muffliato PWA)"]
-    P2["🎤 Whisper.cpp<br/>(Local ASR)"]
-    P3["🍓 Pi / Laptop<br/>(Screen/Video Capture)"]
+  subgraph EDGE ["1. Edge / Classroom"]
+    P1["📱 Phones (Muffliato)"]
+    P2["🎤 Whisper.cpp ASR"]
+    P3["🍓 Pi / Laptop"]
+  end
+  subgraph CORE ["2. On-Prem Vault"]
+    API["FastAPI Orchestrator"]
+    EMB["Local Embedder"]
+    ADB[("Actian VectorAI DB")]
+    AVEC[("Actian Analytics")]
+    MONGO[("MongoDB Atlas")]
+  end
+  subgraph CLOUD ["3. Cloud Layer"]
+    GEM["Gemini API"]
+    NVIDIA["NVIDIA Llama 3.2"]
+    ELE["ElevenLabs TTS"]
+  end
+  subgraph UI ["4. Teacher UI"]
+    RAD["Marauder's Radar"]
+    PEN["Pensieve Analytics"]
   end
 
-  %% On-Prem School Server Layer
-  subgraph CORE ["2. On-Prem 'School Server' (Docker)"]
-    API["FastAPI Orchestrator<br/>(WebSocket + REST)"]
-    EMB["Local Embedder<br/>(bge-small, 384-dim)"]
-    ADB[("Actian VectorAI DB<br/>(Semantic Retrieval)")]
-    AVEC[("Actian Vector Analytics<br/>(Columnar SQL)")]
-    MONGO[("MongoDB Atlas<br/>(User & Auth)")]
-  end
-
-  %% Generative Cloud Layer
-  subgraph CLOUD ["3. Generative Cloud Layer"]
-    GEM["Gemini API<br/>(Analogy Rewrite)"]
-    NVIDIA["NVIDIA NIM Fallback<br/>(Llama 3.2 Vision/OCR)"]
-    ELE["ElevenLabs API<br/>(Voice TTS)"]
-  end
-
-  %% Teacher Dashboard Layer
-  subgraph UI ["4. Teacher Dashboard"]
-    RAD["Marauder's Radar<br/>(D3 Heatmap)"]
-    PEN["Pensieve Analytics<br/>(Confusion Timeline)"]
-  end
-
-  %% Data Flow Connections
-  P1 -- "WebSocket 'I'm Lost' Ping" --> API
-  P2 -- "Transcripts" --> EMB
-  P3 -- "Video/OCR Frames" --> EMB
-  
-  EMB -- "Vector Embeddings" --> ADB
-  API -- "Semantic Search" --> ADB
-  API -- "Aggregated Stats" --> AVEC
-  API -- "User Lookups" --> MONGO
-  
-  API -- "Prompt + Context" --> GEM
-  API -. "Fallback on 429" .-> NVIDIA
-  GEM -- "Rewritten Analogy" --> API
-  NVIDIA -- "Rewritten Analogy" --> API
-  
-  API -- "Analogy Text" --> ELE
-  ELE -- "Audio Stream" --> P1
-  
-  API -- "Live Event Feed" --> RAD
-  AVEC -- "Historical Analytics" --> PEN
-
-  %% Styling
-  classDef edge fill:#e1f5fe,stroke:#0288d1,stroke-width:2px,color:#000
-  classDef core fill:#e8f5e9,stroke:#388e3c,stroke-width:2px,color:#000
-  classDef cloud fill:#fff3e0,stroke:#f57c00,stroke-width:2px,color:#000
-  classDef ui fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px,color:#000
-  
-  class EDGE edge
-  class CORE core
-  class CLOUD cloud
-  class UI ui
+  P1 --> API; P2 --> EMB; P3 --> EMB; EMB --> ADB
+  API --> ADB; API --> AVEC; API --> MONGO
+  API --> GEM -.-> NVIDIA
+  GEM --> API; NVIDIA --> API
+  API --> ELE; ELE --> P1
+  API --> RAD; AVEC --> PEN
 ```
+</details>
 
 ![Divider](./assets/divider.svg)
 
-## 🗺️ The Marauder's Guide to Setup
+<div align="center">
+  <img alt="The Marauder's Guide to Setup" src="./assets/h-setup.svg" width="80%">
+</div>
 
 Follow these steps to brew the complete Legilimens stack locally.
 
@@ -184,7 +205,10 @@ cd whisper.cpp && make base.en
 
 ![Divider](./assets/divider.svg)
 
-## 🏆 Sponsor Tracks (The Hogwarts Houses)
+<div align="center">
+  <img alt="Sponsor Tracks" src="./assets/h-sponsors.svg" width="60%">
+</div>
+
 This project was proudly built targeting the **Education** track, leveraging:
 - **Actian** (Primary DB + Vector Search)
 - **Gemini** (Primary LLM Engine)
@@ -193,5 +217,8 @@ This project was proudly built targeting the **Education** track, leveraging:
 - **MongoDB** (User Graph)
 - **GitHub** (Version Control)
 
-## ⚖️ The Ministry License
+<div align="center">
+  <img alt="The Ministry License" src="./assets/h-license.svg" width="60%">
+</div>
+
 MIT License — Copyright (c) 2026 Sourodyuti Biswas Sanyal. See [`LICENSE`](./LICENSE).
