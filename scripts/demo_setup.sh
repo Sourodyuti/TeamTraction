@@ -25,21 +25,26 @@ for i in $(seq 1 30); do
     sleep 2
 done
 
+PYTHON_BIN="python"
+if [ -d ".venv/bin" ]; then
+    PYTHON_BIN=".venv/bin/python"
+fi
+
 # 2. Load lecture transcript into VectorAI DB
 echo "2. Loading lecture transcript (chunk + embed + upsert)..."
-PYTHONPATH=backend python data-prep/chunk_lecture.py \
+PYTHONPATH=backend "$PYTHON_BIN" data-prep/chunk_lecture.py \
     --transcript data-prep/sample_lecture.txt \
     --lecture-id 1
 
 # 3. Load textbook chapter into VectorAI DB (knowledge vault)
 echo "3. Loading textbook chapter (knowledge vault)..."
-PYTHONPATH=backend python data-prep/load_textbook.py \
+PYTHONPATH=backend "$PYTHON_BIN" data-prep/load_textbook.py \
     --textbook data-prep/backprop_notes.txt \
     --source "3B1B"
 
 # 4. Pre-cache one analogy for the offline/cable-pull demo
 echo "4. Pre-caching analogy for offline demo (chain_rule, cricketer)..."
-PYTHONPATH=backend python -c "
+PYTHONPATH=backend "$PYTHON_BIN" -c "
 from services.offline_cache import pre_cache_analogy
 success = pre_cache_analogy(
     concept_node='chain_rule',
