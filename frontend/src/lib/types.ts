@@ -15,17 +15,17 @@ export enum InterestAvatar {
   COOK = "cook",
 }
 
-// ─── Phase 2: Capture ────────────────────────────────────────────
+// ─── Phase 2: Capture ─────────────────────────────────────────
 
 export interface StudentPing {
   student_id: string;
   ts: string; // ISO datetime
   signal_type: SignalType;
   lecture_id: number;
-  avatar?: string; // Interest profile (cricketer | gamer | cook) — sent with every ping
+  avatar?: string; // Interest profile (cricketer | gamer | cook)
 }
 
-// ─── Phase 3: Radar ──────────────────────────────────────────────
+// ─── Phase 3: Radar ──────────────────────────────────────────
 
 export interface ConceptNode {
   id: string;
@@ -81,31 +81,37 @@ export interface RecordingChunk {
   duration: number;
 }
 
+// ─── Phase 4-6: Latency badge ────────────────────────────────────
+
+/**
+ * LatencyBadge mirrors the 'latency_badge' WS message from websocket.py.
+ * Flat numeric fields — no nested objects so the badge component can
+ * render without any intermediate parsing.
+ */
+export interface LatencyBadge {
+  type: 'latency_badge';
+  lecture_id: number;
+  concept_node: string;
+  embedding_ms: number;
+  retrieval_ms: number;
+  gemini_ms: number;
+  elevenlabs_ms: number;
+  total_ms: number;
+  ts: string;
+}
+
 // ─── Server → Client messages ────────────────────────────────────
 
 export type ServerMessage =
-  | { type: "radar_update"; lecture_id: number; student_id: string; signal_type: string; concept_node: string }
+  | { type: "radar_update"; lecture_id: number; student_id: string; signal_type: string; concept_node: string; ts?: string }
   | { type: "analogy_audio"; student_id: string; audio_url: string }
   | { type: "chunk_update"; lecture_id: number; chunk_id: string; topic_node: string }
   | ConfusionAlert
   | AnalogyReady
   | TranscriptUpdate
-  | {
-      type: "latency_update";
-      retrieval_ms: number;
-      embedding_ms?: number;
-      gemini_ms?: number;
-      total_ms?: number;
-      concept_node?: string;
-      delivered?: boolean;
-    };
+  | LatencyBadge;
 
-// ─── Phase 4-5: Retrieval + Generation ───────────────────────────
-
-
-
-
-// ─── Phase 7: Analytics ──────────────────────────────────────────
+// ─── Phase 7: Analytics ─────────────────────────────────────────
 
 export interface TopConfusingMoment {
   concept_node: string;
