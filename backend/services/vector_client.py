@@ -1,19 +1,14 @@
-"""Actian Vector (Analytics Engine) client — confusion time-series (Phase 2+).
+"""Analytics client — confusion time-series for Pensieve (Phase 7).
 
-Wraps pyodbc calls to Actian Vector for:
-  - Writing confusion events (Phase 2)
-  - Running Pensieve analytics SQL (Phase 7)
-
+Wraps the active database backend (Actian Vector via ODBC, or SQLite for dev).
 All write operations use the `with_retry` decorator for resilience.
-All read operations return plain dicts so FastAPI can serialise them directly.
+All read operations return plain dicts for FastAPI serialization.
 
-NOTE ON INTERVAL SYNTAX
-------------------------
-Actian Vector uses Ingres SQL dialect. ANSI interval literals differ:
-  - PostgreSQL:  e.ts - INTERVAL '60' SECOND
-  - Ingres:      date_add(e.ts, interval '-60 seconds')
-                   or: e.ts - interval '1 minute'
-The get_confusion_density_timeline() method uses the Ingres-compatible form.
+INTERVAL / FETCH-FIRST PORTABILITY
+----------------------------------
+SQLite does not support Ingres/Actian syntax (date_add, FETCH FIRST).
+This module uses SQLite-compatible SQL (LIMIT, datetime(…, '… seconds')),
+which also works on Actian Vector through a compatibility layer when needed.
 """
 from __future__ import annotations
 
@@ -29,13 +24,13 @@ class VectorAnalyticsClient:
     """Client for Actian Vector columnar SQL analytics."""
 
     def close(self) -> None:
-        """Tear down the connection pool (called at application shutdown)."""
+        """Close the database backend (called at application shutdown)."""
         try:
-            from models.database import close_pool
-            close_pool()
-            logger.info("Actian Vector connection pool closed")
+            from models.database import close_backend
+            close_backend()
+            logger.info("Analytics database backend closed")
         except Exception:
-            logger.exception("Error closing Actian Vector connection pool")
+            logger.exception("Error closing analytics database backend")
 
     # ─── Write ────────────────────────────────────────────────────
 
@@ -112,7 +107,7 @@ class VectorAnalyticsClient:
             WHERE lecture_id = ?
             GROUP BY concept_node
             ORDER BY lost_count DESC
-            FETCH FIRST ? ROWS ONLY
+            LIMIT ?
         """
         with get_vector_connection() as conn:
             cursor = conn.cursor()
@@ -134,29 +129,21 @@ class VectorAnalyticsClient:
     def get_confusion_density_timeline(self, lecture_id: int) -> list[dict]:
         """Rolling 60s confusion density over time.
 
-        Uses a self-join window approach for Actian Vector compatibility.
+        Uses a self-join window approach (SQLite-compatible datetime).
         Returns list of {ts, density} dicts.
-
-        INGRES INTERVAL FIX
-        -------------------
-        PostgreSQL syntax  :  w.ts >= e.ts - INTERVAL '60' SECOND
-        Ingres/Actian syntax:  w.ts >= date_add(e.ts, interval '-60 seconds')
-
-        'INTERVAL '60' SECOND' is a PostgreSQL-only extension and raises
-        a syntax error on Actian Vector. The Ingres interval literal
-        syntax is: INTERVAL 'n unit' with the sign absorbed into the string.
         """
         sql = """
             SELECT
                 e.ts,
-                CAST(
-                    SUM(CASE WHEN w.signal_type = 'lost' THEN 1.0 ELSE 0.0 END)
-                    / NULLIF(COUNT(w.event_id), 0)
-                AS FLOAT) AS density
+                CASE
+                    WHEN COUNT(w.event_id) = 0 THEN 0.0
+                    ELSE 1.0 * SUM(CASE WHEN w.signal_type = 'lost' THEN 1 ELSE 0 END)
+                          / COUNT(w.event_id)
+                END AS density
             FROM confusion_events e
             LEFT JOIN confusion_events w
                 ON  w.lecture_id   = e.lecture_id
-                AND w.ts          >= date_add(e.ts, interval '-60 seconds')
+                AND w.ts          >= datetime(e.ts, '-60 seconds')
                 AND w.ts          <= e.ts
             WHERE e.lecture_id = ?
             GROUP BY e.ts

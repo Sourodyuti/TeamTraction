@@ -25,34 +25,26 @@ from models.schemas import TopConfusingMoment
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/analytics", tags=["analytics"])
 
-# pyodbc availability — checked at query time, not import time.
-# This lets the server boot even without unixodbc installed;
-# endpoints return 503 with a clear install message.
-_PYODBC_AVAILABLE: bool = False
-try:
-    import pyodbc  # noqa: F401
-    _PYODBC_AVAILABLE = True
-except ImportError:
-    logger.warning(
-        "pyodbc not importable — Actian Vector analytics endpoints will return 503. "
-        "Install unixodbc + pyodbc to enable real SQL queries."
-    )
-
-
-def _assert_pyodbc() -> None:
-    if not _PYODBC_AVAILABLE:
+def _assert_backend() -> None:
+    """Check that the analytics database backend is reachable."""
+    try:
+        from dependencies import get_analytics
+        client = get_analytics()
+        if client is None or not client.health():
+            raise RuntimeError("not available")
+    except Exception:
         raise HTTPException(
             status_code=503,
             detail=(
-                "Actian Vector analytics unavailable: pyodbc/unixodbc not installed. "
-                "Run: apt-get install unixodbc-dev && pip install pyodbc"
+                "Analytics backend unavailable. "
+                "Falls back to SQLite automatically when Actian Vector is not reachable."
             ),
         )
 
 
 def _execute_query(sql: str, params: tuple = ()) -> list[tuple]:
     """Execute a read-only query and return all rows. Raises HTTPException on failure."""
-    _assert_pyodbc()
+    _assert_backend()
     from models.database import get_vector_connection, with_retry
     
     @with_retry(max_retries=2, backoff_base=0.5)
@@ -72,7 +64,7 @@ def _execute_query(sql: str, params: tuple = ()) -> list[tuple]:
 
 def _execute_update(sql: str, params: tuple = ()) -> int:
     """Execute a write query, return rows affected."""
-    _assert_pyodbc()
+    _assert_backend()
     from models.database import get_vector_connection
     
     try:
@@ -194,22 +186,24 @@ async def seed_demo_data(lecture_id: int = 1) -> dict:
     try:
         with get_vector_connection() as conn:
             cursor = conn.cursor()
+            cursor.execute("SELECT COALESCE(MAX(event_id), 0) + 1 FROM confusion_events")
+            next_id = cursor.fetchone()[0]
             events = [
-                ("student_1", "chain_rule", "lost", ts - timedelta(seconds=120)),
-                ("student_2", "chain_rule", "lost", ts - timedelta(seconds=115)),
-                ("student_3", "chain_rule", "lost", ts - timedelta(seconds=110)),
-                ("student_1", "chain_rule", "gotit", ts - timedelta(seconds=100)),
-                ("student_4", "gradient_descent", "lost", ts - timedelta(seconds=60)),
-                ("student_5", "gradient_descent", "lost", ts - timedelta(seconds=55)),
+                (next_id + 0, "student_1", "chain_rule", "lost", ts - timedelta(seconds=120)),
+                (next_id + 1, "student_2", "chain_rule", "lost", ts - timedelta(seconds=115)),
+                (next_id + 2, "student_3", "chain_rule", "lost", ts - timedelta(seconds=110)),
+                (next_id + 3, "student_1", "chain_rule", "gotit", ts - timedelta(seconds=100)),
+                (next_id + 4, "student_4", "gradient_descent", "lost", ts - timedelta(seconds=60)),
+                (next_id + 5, "student_5", "gradient_descent", "lost", ts - timedelta(seconds=55)),
             ]
             for evt in events:
                 cursor.execute(
                     """
                     INSERT INTO confusion_events 
-                    (lecture_id, student_id, concept_node, signal_type, ts) 
-                    VALUES (?, ?, ?, ?, ?)
+                    (event_id, lecture_id, student_id, concept_node, signal_type, ts) 
+                    VALUES (?, ?, ?, ?, ?, ?)
                     """,
-                    (lecture_id, evt[0], evt[1], evt[2], evt[3])
+                    (evt[0], lecture_id, evt[1], evt[2], evt[3], evt[4])
                 )
             conn.commit()
     except Exception as e:
