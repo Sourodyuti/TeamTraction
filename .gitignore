@@ -22,6 +22,8 @@ env/
 .env.test.local
 .env.production.local
 frontend/.env
+backend/.env
+*.env
 
 # IDE
 .idea/
