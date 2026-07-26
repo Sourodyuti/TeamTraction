@@ -37,3 +37,7 @@ passlib[bcrypt]           # Password hashing
 python-multipart          # Form data parsing (OAuth2 form)
 
 pydantic[email]
+
+# Vision fallback
+Pillow
+pytesseract
