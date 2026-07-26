@@ -2,10 +2,19 @@
 
 Endpoint: /ws/lecture/{lecture_id}
 
-Protocol:
-  Client → Server:  {"type": "ping", "student_id": "...", "signal_type": "lost|gotit|slower"}
-  Server → Client:  {"type": "radar_update", ...}  (broadcast to all connections in the lecture)
-  Server → Client:  {"type": "analogy_ready", "student_id": "...", ...}  (targeted/broadcast)
+Protocol (Server -> Client message types):
+  radar_update    broadcast on every ping — student confusion event
+  confusion_alert broadcast when 'lost' count hits teacher alert threshold
+  analogy_ready   broadcast when Accio pipeline completes (full payload)
+  latency_badge   broadcast immediately after Accio — flat numeric keys
+                  so the frontend overlay can render the headline metric
+                  without parsing the full analogy_ready payload.
+                  Keys: retrieval_ms, gemini_ms, elevenlabs_ms, total_ms
+  error           sent to the offending client only
+
+Client -> Server:
+  ping            student confusion signal
+  teacher_alert_dismiss  teacher dismisses alert
 """
 from __future__ import annotations
 
@@ -32,19 +41,16 @@ class ConnectionManager:
     """Manages WebSocket connections partitioned by lecture_id and student_id/role."""
 
     def __init__(self) -> None:
-        # lecture_id -> student_id -> {ws, role}
         self._connections: Dict[int, Dict[str, Dict]] = defaultdict(dict)
         self._teacher_connections: Dict[int, Set[WebSocket]] = defaultdict(set)
         self._lock = asyncio.Lock()
 
     def connect(self, lecture_id: int, student_id: str, websocket: WebSocket, role: str = "student") -> None:
-        """Register a connection for a lecture."""
         self._connections[lecture_id][student_id] = {"ws": websocket, "role": role}
         if role == "teacher":
             self._teacher_connections[lecture_id].add(websocket)
 
     def disconnect(self, lecture_id: int, student_id: str) -> None:
-        """Disconnect and clean up connection entries."""
         if lecture_id in self._connections:
             entry = self._connections[lecture_id].pop(student_id, None)
             if entry and entry.get("role") == "teacher":
@@ -56,7 +62,6 @@ class ConnectionManager:
                 self._teacher_connections.pop(lecture_id, None)
 
     def get_online_students(self, lecture_id: int) -> List[str]:
-        """Return list of online student IDs for a given lecture."""
         if lecture_id not in self._connections:
             return []
         return [
@@ -65,12 +70,9 @@ class ConnectionManager:
         ]
 
     async def broadcast_to_lecture(self, lecture_id: int, message: dict) -> None:
-        """Send message to all connections in a lecture."""
         if lecture_id not in self._connections:
             return
         dead: List[str] = []
-        payload = message if isinstance(message, str) else json.dumps(message)
-        
         for student_id, entry in list(self._connections[lecture_id].items()):
             ws = entry.get("ws")
             if not ws:
@@ -79,29 +81,25 @@ class ConnectionManager:
                 if isinstance(message, dict):
                     await ws.send_json(message)
                 else:
-                    await ws.send_text(payload)
+                    await ws.send_text(message)
             except Exception:
                 dead.append(student_id)
-
         for sid in dead:
             self.disconnect(lecture_id, sid)
 
     async def send_to_student(self, lecture_id: int, student_id: str, message: dict) -> bool:
-        """Send message to a specific student in a lecture."""
         entry = self._connections.get(lecture_id, {}).get(student_id)
         if not entry or not entry.get("ws"):
             return False
         ws = entry["ws"]
-        payload = json.dumps(message) if isinstance(message, dict) else message
         try:
-            await ws.send_text(payload)
+            await ws.send_text(json.dumps(message) if isinstance(message, dict) else message)
             return True
         except Exception:
             self.disconnect(lecture_id, student_id)
             return False
 
     async def send_teacher_alert(self, lecture_id: int, message: dict) -> None:
-        """Send an alert to all connected teachers in a lecture."""
         dead: List[WebSocket] = []
         for ws in list(self._teacher_connections.get(lecture_id, set())):
             try:
@@ -124,28 +122,23 @@ class ThresholdTracker:
         self.threshold = threshold
         self.window_seconds = window_seconds
         self.cooldown_seconds = cooldown_seconds
-        # lecture_id -> concept_node -> deque of (timestamp, student_id)
         self._windows: Dict[int, Dict[str, deque]] = defaultdict(lambda: defaultdict(deque))
-        # key (lecture_id:concept_node) -> last_fired_timestamp
         self._last_fired: Dict[str, float] = {}
 
     def record_lost(self, lecture_id: int, concept_node: str, student_id: str) -> bool:
-        """Record a 'lost' signal. Returns True if threshold is crossed and cooldown elapsed."""
+        """Record a 'lost' signal. Returns True if threshold crossed and cooldown elapsed."""
         now = time.monotonic()
         key = f"{lecture_id}:{concept_node}"
 
-        # Check cooldown
         if now - self._last_fired.get(key, 0.0) < self.cooldown_seconds:
             return False
 
         dq = self._windows[lecture_id][concept_node]
         dq.append((now, student_id))
 
-        # Evict old entries outside window
         while dq and (now - dq[0][0]) > self.window_seconds:
             dq.popleft()
 
-        # Count unique students in window
         unique_students = {sid for _, sid in dq}
         if len(unique_students) >= self.threshold:
             self._last_fired[key] = now
@@ -154,7 +147,6 @@ class ThresholdTracker:
         return False
 
     def reset_lecture(self, lecture_id: int) -> None:
-        """Reset tracking state for a given lecture."""
         self._windows.pop(lecture_id, None)
         keys_to_remove = [k for k in self._last_fired if k.startswith(f"{lecture_id}:")]
         for k in keys_to_remove:
@@ -174,12 +166,10 @@ class OfflineQueue:
         self._lock = asyncio.Lock()
 
     async def enqueue(self, item: dict) -> None:
-        """Enqueue an offline ping event."""
         async with self._lock:
             self._queue.append(item)
 
     async def flush(self) -> List[dict]:
-        """Flush and return all pending queued items."""
         async with self._lock:
             items = list(self._queue)
             self._queue.clear()
@@ -197,7 +187,6 @@ offline_queue = OfflineQueue()
 
 @router.websocket("/lecture/{lecture_id}")
 async def lecture_websocket(websocket: WebSocket, lecture_id: int) -> None:
-    """WebSocket endpoint for teachers and students."""
     role = websocket.query_params.get("role", "student")
     student_id = websocket.query_params.get("student_id", f"user_{id(websocket)}")
     await websocket.accept()
@@ -233,7 +222,6 @@ async def handle_ping(
     data: dict,
     fallback_student_id: str = "anonymous",
 ) -> None:
-    """Handle incoming student ping."""
     student_id = data.get("student_id") or fallback_student_id
     try:
         ping = StudentPing(
@@ -246,12 +234,10 @@ async def handle_ping(
         await websocket.send_json({"type": "error", "message": "Invalid ping payload"})
         return
 
-    # Tag to current concept_node
     from routers.asr import get_current_chunk_sync
     current = get_current_chunk_sync(lecture_id) or {"topic_node": "unknown", "chunk_id": "unknown", "text_preview": ""}
     concept_node = current["topic_node"]
 
-    # Write confusion event asynchronously
     event = ConfusionEvent(
         event_id=int(time.time() * 1000),
         lecture_id=lecture_id,
@@ -262,7 +248,6 @@ async def handle_ping(
     )
     asyncio.create_task(_write_event(event))
 
-    # Broadcast radar update to lecture
     radar_update = {
         "type": "radar_update",
         "lecture_id": lecture_id,
@@ -273,11 +258,9 @@ async def handle_ping(
     }
     await manager.broadcast_to_lecture(lecture_id, radar_update)
 
-    # Threshold check for 'lost' signals
     if ping.signal_type == SignalType.LOST:
         fired = threshold_tracker.record_lost(lecture_id, concept_node, ping.student_id)
 
-        # Notify teachers
         alert_msg = {
             "type": "confusion_alert",
             "lecture_id": lecture_id,
@@ -307,7 +290,6 @@ async def handle_ping(
 
 
 async def broadcast_to_lecture(lecture_id: int, message: dict) -> None:
-    """Send message to all connections in a lecture."""
     await manager.broadcast_to_lecture(lecture_id, message)
 
 
@@ -317,7 +299,6 @@ async def send_teacher_alert(
     count: int,
     recommendation: str = "Consider re-explaining this concept",
 ) -> None:
-    """Send an alert to all connected teachers in a lecture."""
     alert_msg = {
         "type": "confusion_alert",
         "lecture_id": lecture_id,
@@ -330,7 +311,6 @@ async def send_teacher_alert(
 
 
 async def _write_event(event: ConfusionEvent) -> None:
-    """Insert confusion event into Actian Vector."""
     try:
         from services.vector_client import VectorAnalyticsClient
         client = VectorAnalyticsClient()
@@ -345,7 +325,16 @@ async def _trigger_accio(
     chunk_text: str,
     avatar: InterestAvatar = InterestAvatar.CRICKETER,
 ) -> None:
-    """Execute retrieval pipeline directly and broadcast analogy to lecture."""
+    """Execute retrieval pipeline and broadcast both analogy_ready and latency_badge.
+
+    Two separate messages are sent on completion:
+      1. analogy_ready — full payload (text + audio_url)
+      2. latency_badge — flat numeric-only message for the frontend overlay badge
+         Keys: retrieval_ms, gemini_ms, elevenlabs_ms, total_ms
+         The frontend reads ONLY this message type to render the headline
+         latency metric. Separating it avoids parsing the full analogy payload
+         in a tight animation loop.
+    """
     try:
         from routers.retrieval import run_retrieval_pipeline
         analogy = await run_retrieval_pipeline(
@@ -354,7 +343,9 @@ async def _trigger_accio(
             avatar=avatar,
         )
         analogy_dict = analogy.model_dump() if hasattr(analogy, "model_dump") else analogy.dict()
+        latency_ms: dict = analogy_dict.get("latency_ms") or {}
 
+        # ── 1. Full payload broadcast ─────────────────────────────
         broadcast_msg = {
             "type": "analogy_ready",
             "lecture_id": lecture_id,
@@ -362,12 +353,44 @@ async def _trigger_accio(
             "original_text": analogy_dict.get("original_text", ""),
             "analogy_text": analogy_dict.get("analogy_text", ""),
             "avatar": analogy_dict.get("avatar", avatar.value),
-            "latency_ms": analogy_dict.get("latency_ms", {}),
+            "latency_ms": latency_ms,
             "audio_url": analogy_dict.get("audio_url"),
         }
         await manager.broadcast_to_lecture(lecture_id, broadcast_msg)
-        logger.info("Accio analogy broadcast for lecture=%d concept=%s", lecture_id, concept_node)
+
+        # ── 2. Latency badge broadcast — flat numeric keys ─────────
+        # fix #4: the frontend overlay badge needs a dedicated message type
+        # with top-level numeric fields, not nested inside latency_ms.
+        # useWebSocket.ts should handle 'latency_badge' independently so
+        # the badge component can subscribe without re-rendering the full
+        # analogy pane.
+        retrieval_ms = round(latency_ms.get("retrieval", 0.0), 1)
+        gemini_ms = round(latency_ms.get("gemini", 0.0), 1)
+        elevenlabs_ms = round(latency_ms.get("elevenlabs", 0.0), 1)
+        embedding_ms = round(latency_ms.get("embedding", 0.0), 1)
+        total_ms = round(
+            retrieval_ms + gemini_ms + elevenlabs_ms + embedding_ms, 1
+        )
+
+        latency_badge_msg = {
+            "type": "latency_badge",
+            "lecture_id": lecture_id,
+            "concept_node": concept_node,
+            "embedding_ms": embedding_ms,
+            "retrieval_ms": retrieval_ms,
+            "gemini_ms": gemini_ms,
+            "elevenlabs_ms": elevenlabs_ms,
+            "total_ms": total_ms,
+            "ts": datetime.now().isoformat(),
+        }
+        await manager.broadcast_to_lecture(lecture_id, latency_badge_msg)
+
+        logger.info(
+            "Accio complete lecture=%d concept=%s total=%.0fms "
+            "(embed=%.0f retrieve=%.0f gemini=%.0f tts=%.0f)",
+            lecture_id, concept_node, total_ms,
+            embedding_ms, retrieval_ms, gemini_ms, elevenlabs_ms,
+        )
 
     except Exception:
         logger.exception("Accio trigger failed for lecture=%d concept=%s", lecture_id, concept_node)
-
