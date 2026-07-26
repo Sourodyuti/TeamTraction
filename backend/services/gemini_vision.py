@@ -16,35 +16,35 @@ logger = logging.getLogger(__name__)
 
 _gemini_vision_client: "GeminiVisionClient | None" = None
 
-_CONTEXT_PROMPT = """You are analyzing a lecture slide shown to students.
-Identify the main concept or topic being discussed.
+_CONTEXT_PROMPT = """You are analyzing a screen capture or image.
+Identify the main concept, topic, or activity being shown.
 
 Respond STRICTLY with a valid JSON object matching this exact format and nothing else. Do not use markdown wrappers:
 {
   "topic_node": "snake_case_topic_name",
-  "slide_text_summary": "brief summary of slide content",
+  "slide_text_summary": "detailed summary of the visual and text content",
   "difficulty": 1-10,
   "key_terms": ["term1", "term2"]
 }
 
 If you cannot determine the topic, respond with:
-{"topic_node": "unknown", "slide_text_summary": "", "difficulty": 5, "key_terms": []}
+{"topic_node": "unknown", "slide_text_summary": "Could not determine context.", "difficulty": 5, "key_terms": []}
 """
 
-_ASK_PROMPT = """You are an AI teaching assistant analyzing a lecture slide.
-A student has asked a question: "{question}"
+_ASK_PROMPT = """You are an AI assistant analyzing a screen capture or image.
+A user has asked a question: "{question}"
 
-Context from previous slides: {context}
+Context from previous frames: {context}
 
-Provide a helpful, educational answer. Include exactly 2 relevant YouTube video URLs at the end of your answer.
+Provide a helpful and detailed answer. Include exactly 2 relevant YouTube video URLs at the end of your answer.
 
 Respond STRICTLY with a valid JSON object matching this exact format and nothing else. Do not use markdown wrappers:
 {{
   "topic_node": "snake_case_topic_name",
-  "slide_text_summary": "brief summary of slide content",
+  "slide_text_summary": "detailed summary of the visual and text content",
   "difficulty": 5,
   "key_terms": ["term1", "term2"],
-  "answer": "Your detailed answer to the student's question, including 2 YouTube links."
+  "answer": "Your detailed answer to the user's question, including 2 YouTube links."
 }}
 """
 
