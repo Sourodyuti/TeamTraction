@@ -6,14 +6,14 @@
 
 Built for a Harry-Potter-themed hackathon. Every component carries a spell name:
 
-| Spell | Component | What it does |
-|---|---|---|
-| **Muffliato** | Confusion capture | Quietly listens to "I'm lost" pings without disrupting class |
-| **Marauder's Radar** | Real-time viz | Shows where minds are wandering, live (D3 radial heatmap) |
-| **Accio Analogy** | Retrieval engine | Summons the best past explanation from the school's knowledge vault (Actian VectorAI DB) |
-| **Gemino** | Analogy rewriter | Reshapes the explanation in the student's language (Gemini 2.0 Flash) |
-| **Sonorus** | Voice re-delivery | Speaks the analogy back, calmly (ElevenLabs) |
-| **Pensieve** | Teacher analytics | Re-view the lecture's worst moments and re-teach plans (Actian Vector columnar SQL) |
+| 🪄 Spell | 🧩 Component | ⚙️ Technical Implementation | 🎯 Purpose |
+|:---|:---|:---|:---|
+| **Muffliato** | Confusion Capture | Next.js 14 PWA, WebSockets | Quietly listens to "I'm lost" pings from student phones without disrupting class. |
+| **Marauder's Radar** | Real-time Viz | D3.js Radial Heatmap + React | Shows professors where minds are wandering, live. |
+| **Accio Analogy** | Retrieval Engine | **Actian VectorAI DB**, `bge-small` | Summons the best past explanation from the school's highly secure knowledge vault. |
+| **Gemino** | Analogy Rewriter | Gemini API | Reshapes the explanation using the student's interest graph. |
+| **Sonorus** | Voice Re-delivery | ElevenLabs TTS | Speaks the analogy back calmly and clearly. |
+| **Pensieve** | Teacher Analytics | **Actian Vector (Columnar SQL)** | Re-view the lecture's worst moments and re-teach plans. |
 
 ---
 
@@ -58,40 +58,90 @@ docker-compose up -d
 
 ## Architecture
 
+<details>
+<summary><b>📜 Click to expand — ASCII diagram</b></summary>
+
+```text
++-------------------------------------------------------------------+
+|                       1. EDGE / CLASSROOM                         |
+|                                                                   |
+|       [📱 Student Phone]              [🎤 Professor's Device]     |
+|    (Muffliato web-buttons)            (Audio & Screen Capture)    |
+|               ^       |                           |               |
++---------------|-------|---------------------------|---------------+
+         (Audio)|       |(WebSocket Pings)          |(Transcript)
+                |       v                           v
++---------------|---------------------------------------------------+
+|               |       2. ON-PREM 'SCHOOL SERVER'                  |
+|               |                                                   |
+|               |    [FastAPI Orchestrator]      [bge-small Embedder]|
+|               |      (WebSocket + REST)          (Local, 384-dim) |
+|               |         |           |                     |       |
+|               |         |           +-----------------+   |       |
+|               |  (SQL)  v            (Semantic Search)v   v(Vectors)
+|               | [Actian Analytics]       [Actian VectorAI DB]     |
+|               |   (Columnar SQL)       (Semantic Retrieval Engine)|
++---------------|---------|---^-------------------------------------+
+                |         |   |
+     (TTS Text) | (Prompt)|   |(Rewritten Analogy)
+                |         v   |
++---------------|---------------------------------------------------+
+|               |        3. CLOUD (Generative Step)                 |
+|               |                                                   |
+|               |            [Google Gemini API]                    |
+|               |             (Analogy Rewrite)                     |
+|               |                                                   |
+|               +----------- [ElevenLabs TTS]                       |
+|                          (Voice Re-delivery)                      |
++-------------------------------------------------------------------+
+
++-------------------------------------------------------------------+
+|                       4. TEACHER DASHBOARD                        |
+|                                                                   |
+|        [Marauder's Radar]              [Pensieve Analytics]       |
+|       (D3 Radial Heatmap)            (Top Confusing Moments)      |
++-------------------------------------------------------------------+
+```
+
+</details>
+
+<details>
+<summary><b>📜 Click to expand — Mermaid diagram</b></summary>
+
 ```mermaid
 flowchart LR
-  subgraph EDGE["Edge / Classroom (student phones + 1 Pi)"]
+  subgraph EDGE["Edge / Classroom"]
     P1["📱 Student Phone<br/>Muffliato web-buttons"]
-    P2["🎤 Whisper.cpp<br/>local ASR"]
-    P3["🍓 Pi / laptop<br/>Actian Zen buffer"]
+    P2["🎤 Professor's Device<br/>Audio & Screen Capture"]
   end
-  subgraph CORE["On-Prem 'School Server' (1 laptop, Docker)"]
-    ADB["Actian VectorAI DB<br/>:6573 REST / :6574 gRPC<br/>semantic retrieval + agent memory"]
-    AVEC["Actian Vector Analytics<br/>columnar SQL<br/>confusion time-series analytics"]
-    API["FastAPI orchestrator<br/>WebSocket + REST"]
-    EMB["bge-small embedder<br/>local, 384-dim"]
+  subgraph CORE["On-Prem 'School Server'"]
+    ADB["Actian VectorAI DB<br/>:6573 REST / :6574 gRPC<br/>Semantic Retrieval Engine"]
+    AVEC["Actian Vector Analytics<br/>Columnar SQL<br/>Confusion Time-Series Analytics"]
+    API["FastAPI Orchestrator<br/>WebSocket + REST"]
+    EMB["bge-small Embedder<br/>Local, 384-dim"]
   end
-  subgraph CLOUD["Cloud (generative step only)"]
-    GEM["Gemini API<br/>analogy rewrite"]
-    ELE["ElevenLabs<br/>voice re-delivery"]
+  subgraph CLOUD["Cloud (Generative Step)"]
+    GEM["Gemini API<br/>Analogy Rewrite"]
+    ELE["ElevenLabs<br/>Voice Re-delivery"]
   end
   subgraph UI["Teacher Dashboard"]
-    RAD["Marauder's Radar<br/>D3 radial heatmap + timeline"]
-    PEN["Pensieve analytics<br/>top confusing moments"]
+    RAD["Marauder's Radar<br/>D3 Radial Heatmap"]
+    PEN["Pensieve Analytics<br/>Top Confusing Moments"]
   end
-  P1 -- WebSocket pings --> API
-  P2 -- transcript chunks --> EMB
-  P3 -- sync when online --> API
-  EMB -- vectors --> ADB
-  API -- semantic search --> ADB
-  API -- SQL analytics --> AVEC
-  API -- analogy prompt --> GEM
-  GEM -- rewritten analogy --> API
-  API -- TTS text --> ELE
-  ELE -- audio --> P1
-  API -- live radar feed --> RAD
-  AVEC -- aggregated stats --> PEN
+  P1 -- WebSocket Pings --> API
+  P2 -- Transcript Chunks --> EMB
+  EMB -- Vectors --> ADB
+  API -- Semantic Search --> ADB
+  API -- SQL Analytics --> AVEC
+  API -- Analogy Prompt --> GEM
+  GEM -- Rewritten Analogy --> API
+  API -- TTS Text --> ELE
+  ELE -- Audio --> P1
+  API -- Live Radar Feed --> RAD
+  AVEC -- Aggregated Stats --> PEN
 ```
+
+</details>
 
 The defining structural choice: **the entire student-data path (capture → embed → retrieve → analytics) lives inside the "school server" laptop.** Only the final analogy rewrite + voice cross the network, and that payload is anonymized text. Pull the Ethernet cable and the radar, retrieval, and analytics still work.
 
@@ -99,24 +149,23 @@ The defining structural choice: **the entire student-data path (capture → embe
 
 ## How It Works
 
-### The ~1.5s Loop
+In the Grand Halls of learning, students hesitate to interrupt a professor mid-lecture. As a result, professors power through material while a silent majority falls behind. Legilimens acts as a silent, telepathic feedback loop between students and their professors.
 
-1. **Lecturer talks** → Whisper.cpp transcribes audio in ~15s chunks → chunks are embedded by `bge-small-en` (384-dim, CPU) → upserted into Actian VectorAI DB's `lecture_chunks` collection with metadata `{topic_node, ts, difficulty}`.
+### The 7-Step Pipeline
 
-2. **Student hits "🪄 I'm lost"** → Muffliato PWA sends a WebSocket `ping` to FastAPI with `{student_id, signal_type, lecture_id}`.
+**1. Continuous Capture** — The professor's lecture is recorded locally (audio/transcript and screen capture). Whisper.cpp transcribes audio in ~15s chunks; the Gemini Vision service analyzes screen frames to identify the active concept node.
 
-3. **FastAPI** tags the ping to the currently active `concept_node` (derived from the live ASR feed), writes a row to the Actian Vector `confusion_events` table, and immediately broadcasts a `radar_update` message to all teacher dashboard connections — the radar flares red within **<100ms**.
+**2. Actian VectorAI Data Vault** — All lecture context (transcripts, OCR text, slide content) is embedded locally using the `bge-small-en` model (384-dim, CPU) and stored natively in Actian VectorAI DB, which provides lightning-fast semantic retrieval via gRPC endpoints. The `lecture_chunks` collection grows continuously as the lecture progresses.
 
-4. **Threshold trigger** — when ≥2 distinct students signal `lost` within a 20-second sliding window on the same concept, and a 30-second cooldown has elapsed — **Accio Analogy** fires:
-   - Embed the confusing chunk
-   - Similarity search against VectorAI DB (`top-3` past explanations, cosine distance)
-   - Hybrid BM25 + vector RRF fusion for better keyword+semantic relevance
+**3. Confusion Pings** — Students tap the "🪄 Muffliato" button on their phones when lost. The Muffliato PWA sends a WebSocket `ping` to FastAPI with `{student_id, signal_type, lecture_id}`. The radar flares red within **<100ms**.
 
-5. **Best retrieved context + student's interest avatar** → Gemini 2.0 Flash prompt: *"Rewrite as a 2-sentence analogy for a {cricketer/gamer/cook}."* Falls back to NVIDIA NIM if Gemini returns 429.
+**4. Actian Contextual RAG Pipeline** — When ≥2 distinct students signal `lost` within a 20-second sliding window on the same concept (with a 30-second cooldown), the FastAPI orchestrator fires **Accio Analogy**: it embeds the confusing chunk, queries Actian VectorAI DB for the top-3 semantically similar past explanations via cosine distance, then applies BM25 + vector RRF fusion for better precision on keyword-heavy confusing phrases.
 
-6. **Gemini output** → ElevenLabs TTS (`eleven_flash_v2_5`) → audio streamed back to lost students' phones via WebSocket `analogy_ready` + `latency_badge` messages.
+**5. Generative Personalization** — The Actian-retrieved context is sent to Gemini 2.0 Flash with a student-interest prompt: *"Rewrite as a 2-sentence analogy for a {cricketer/gamer/cook}."* Falls back to NVIDIA NIM if Gemini returns 429.
 
-7. **Actian Vector** accumulates `confusion_events` rows; Pensieve dashboard queries the columnar engine for the "worst 3 moments" ranked by `lost_count × minutes_wasted`, rolling 60s density, and per-cohort heatmaps.
+**6. Voice Synthesis** — The personalized analogy is synthesized into natural speech via ElevenLabs (`eleven_flash_v2_5`) and streamed quietly back to the student's phone via WebSocket `analogy_ready` + `latency_badge` messages — without interrupting the class.
+
+**7. Teacher Analytics (Pensieve)** — Post-lecture, the professor reviews the Pensieve Dashboard. Actian Vector columnar SQL queries the `confusion_events` table for the top-N most confusing moments ranked by `lost_count × minutes_wasted`, rolling 60s density timelines, and per-cohort heatmaps.
 
 ### Latency Budget
 
