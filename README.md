@@ -81,6 +81,39 @@
   <img alt="Architecture Diagram" src="./assets/arch.svg" width="100%">
 </div>
 
+```mermaid
+flowchart LR
+  subgraph EDGE["Edge / Classroom"]
+    P1["Student Phone<br/>Muffliato web-buttons"]
+    P2["Professor's Device<br/>Audio & Screen Capture"]
+  end
+  subgraph CORE["On-Prem 'School Server'"]
+    ADB["Actian VectorAI DB<br/>:6573 REST / :6574 gRPC<br/>Semantic Retrieval Engine"]
+    AVEC["Actian Vector Analytics<br/>Columnar SQL<br/>Confusion Time-Series Analytics"]
+    API["FastAPI Orchestrator<br/>WebSocket + REST"]
+    EMB["bge-small Embedder<br/>Local, 384-dim"]
+  end
+  subgraph CLOUD["Cloud (Generative Step)"]
+    GEM["Gemini API<br/>Analogy Rewrite"]
+    ELE["ElevenLabs<br/>Voice Re-delivery"]
+  end
+  subgraph UI["Teacher Dashboard"]
+    RAD["Marauder's Radar<br/>D3 Radial Heatmap"]
+    PEN["Pensieve Analytics<br/>Top Confusing Moments"]
+  end
+  P1 -- WebSocket Pings --> API
+  P2 -- Transcript Chunks --> EMB
+  EMB -- Vectors --> ADB
+  API -- Semantic Search --> ADB
+  API -- SQL Analytics --> AVEC
+  API -- Analogy Prompt --> GEM
+  GEM -- Rewritten Analogy --> API
+  API -- TTS Text --> ELE
+  ELE -- Audio --> P1
+  API -- Live Radar Feed --> RAD
+  AVEC -- Aggregated Stats --> PEN
+```
+
 <h3>The defining structural choice: the entire student-data path (capture → embed → retrieve → analytics) lives inside the "school server" laptop. Only the final analogy rewrite + voice cross the network, and that payload is anonymised text. Pull the Ethernet cable and the radar, retrieval, and analytics still work.</h3>
 
 ![Divider](./assets/divider.svg)
