@@ -120,6 +120,11 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         set_vectorai(vectorai_client)
     except Exception:
         logger.exception("Failed to connect to VectorAI DB — retrieval will be degraded")
+        logger.critical(
+            "⚠️  VectorAI DB UNREACHABLE — ALL chunk upserts will be silently skipped. "
+            "Check VECTORAI_HOST=%s VECTORAI_PORT=%d in .env",
+            settings.vectorai_host, settings.vectorai_port,
+        )
         set_vectorai(None)
 
     # 4. Analytics backend (Actian Vector via ODBC, or SQLite fallback)
@@ -133,9 +138,13 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         logger.exception("Failed to init analytics backend: %s", e)
         set_analytics(None)
 
-    # Log service health summary
-    logger.info("Startup complete — embedder=%s, vectorai=%s, analytics=%s",
-                bool(embedder), bool(vectorai_client), bool(vector_analytics))
+    # Log service health summary with explicit status labels
+    logger.info(
+        "Startup complete — embedder=%s vectorai_db=%s analytics=%s",
+        "OK" if embedder else "DEGRADED",
+        "OK" if vectorai_client else "DEGRADED (no chunks will be indexed)",
+        "OK" if vector_analytics else "DEGRADED",
+    )
 
     # ─── Initialize Hybrid Search Engine (BM25 + RRF Fusion) ────────
     try:
