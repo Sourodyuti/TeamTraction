@@ -1,7 +1,7 @@
 """Tests for the Gemini analogy rewrite client."""
 from __future__ import annotations
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -20,20 +20,22 @@ class TestGeminiClient:
             client = GeminiClient(api_key="")
             assert not client.available
 
-    def test_fallback_when_unavailable(self):
+    @pytest.mark.asyncio
+    async def test_fallback_when_unavailable(self):
         """rewrite_analogy should return original_text when client is unavailable."""
         with patch("services.gemini_client.settings") as mock_settings:
             mock_settings.gemini_api_key = ""
             from services.gemini_client import GeminiClient
 
             client = GeminiClient(api_key="")
-            text, ms = client.rewrite_analogy(
+            text, ms = await client.rewrite_analogy(
                 "chain_rule", "The chain rule multiplies derivatives.", InterestAvatar.CRICKETER
             )
             assert text == "The chain rule multiplies derivatives."
             assert ms == 0.0
 
-    def test_rewrite_analogy_success(self):
+    @pytest.mark.asyncio
+    async def test_rewrite_analogy_success(self):
         """rewrite_analogy should return Gemini's response text and latency."""
         from services.gemini_client import GeminiClient
 
@@ -47,13 +49,14 @@ class TestGeminiClient:
         mock_genai.models.generate_content.return_value = mock_response
         client._client = mock_genai
 
-        text, ms = client.rewrite_analogy(
+        text, ms = await client.rewrite_analogy(
             "chain_rule", "The chain rule multiplies derivatives.", InterestAvatar.CRICKETER
         )
         assert "cricket" in text.lower()
         assert ms >= 0
 
-    def test_rewrite_analogy_api_failure_fallback(self):
+    @pytest.mark.asyncio
+    async def test_rewrite_analogy_api_failure_fallback(self):
         """rewrite_analogy should fall back to original_text on API errors."""
         from services.gemini_client import GeminiClient
 
@@ -65,7 +68,7 @@ class TestGeminiClient:
         mock_genai.models.generate_content.side_effect = Exception("API error")
         client._client = mock_genai
 
-        text, ms = client.rewrite_analogy(
+        text, ms = await client.rewrite_analogy(
             "chain_rule", "Original explanation.", InterestAvatar.GAMER
         )
         assert text == "Original explanation."
@@ -96,7 +99,8 @@ class TestGeminiClient:
             assert avatar.value in prompt
             assert len(prompt) > 50
 
-    def test_empty_response_fallback(self):
+    @pytest.mark.asyncio
+    async def test_empty_response_fallback(self):
         """Empty Gemini response should trigger fallback."""
         from services.gemini_client import GeminiClient
 
@@ -109,7 +113,7 @@ class TestGeminiClient:
         mock_genai.models.generate_content.return_value = mock_response
         client._client = mock_genai
 
-        text, ms = client.rewrite_analogy(
+        text, ms = await client.rewrite_analogy(
             "chain_rule", "Original text.", InterestAvatar.COOK
         )
         assert text == "Original text."
