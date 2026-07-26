@@ -26,7 +26,7 @@ from fastapi import APIRouter, Depends, HTTPException, Response
 
 from config import settings
 from dependencies import get_embedder, get_vectorai
-from models.schemas import AnalogyResponse, AnalogyRequest, InterestAvatar, RetrievalResult
+from models.schemas import AnalogyResponse, AnalogyRequest, InterestAvatar, RetrievalResult, HybridSearchRequest, HybridSearchResponse, HybridSearchResult, SearchMode
 from services.offline_cache import get_cached_analogy
 
 logger = logging.getLogger(__name__)
@@ -236,3 +236,219 @@ async def retrieval_health() -> dict:
         "elevenlabs_configured": elevenlabs_configured,
         "ready": embedder_ok and vectorai_ok,
     }
+
+
+# ─── Advanced Search Endpoints (Hybrid Fusion + Filtered) ──────────
+
+@router.post("/search", response_model=HybridSearchResponse)
+async def hybrid_search(request: HybridSearchRequest) -> HybridSearchResponse:
+    """Advanced search: hybrid fusion, filtered, semantic, or keyword.
+    
+    Supports:
+    - HYBRID: Reciprocal Rank Fusion of semantic + BM25 keyword search
+    - FILTERED: Semantic search with structured payload filters
+    - SEMANTIC: Pure vector similarity search
+    - KEYWORD: Pure BM25 keyword search
+    """
+    import time as _t
+    latency = {}
+    
+    if request.mode == SearchMode.HYBRID:
+        # Use hybrid fusion engine
+        try:
+            from services.hybrid_search import get_hybrid_engine
+            engine = get_hybrid_engine()
+            if engine is None:
+                raise RuntimeError("Hybrid search engine not initialized")
+            
+            results, lat = engine.search_with_latency(
+                query_text=request.query_text,
+                limit=request.limit,
+                alpha=request.alpha,
+                filter=_build_filter_dict(request),
+            )
+            latency = lat
+        except Exception as e:
+            logger.warning("Hybrid search failed, falling back to semantic: %s", e)
+            results, latency = _fallback_semantic_search(request)
+    
+    elif request.mode == SearchMode.FILTERED:
+        results, latency = _filtered_search(request)
+    
+    elif request.mode == SearchMode.KEYWORD:
+        try:
+            from services.hybrid_search import get_hybrid_engine
+            engine = get_hybrid_engine()
+            if engine is None:
+                raise RuntimeError("Hybrid engine not initialized")
+            
+            t0 = _t.perf_counter()
+            kw_results = engine.bm25_index.search(request.query_text, request.limit)
+            kw_ms = (_t.perf_counter() - t0) * 1000
+            
+            results = [
+                {
+                    "id": r["id"],
+                    "text": r.get("payload", {}).get("text", ""),
+                    "topic_node": r.get("payload", {}).get("topic_node", ""),
+                    "source": r.get("payload", {}).get("source", ""),
+                    "score": r["score"],
+                    "keyword_score": r["score"],
+                    "payload": r.get("payload", {}),
+                }
+                for r in kw_results
+            ]
+            latency = {"keyword_ms": round(kw_ms, 1), "total_ms": round(kw_ms, 1)}
+        except Exception as e:
+            logger.warning("Keyword search failed, falling back to semantic: %s", e)
+            results, latency = _fallback_semantic_search(request)
+    
+    else:  # SEMANTIC
+        results, latency = _fallback_semantic_search(request)
+    
+    search_results = []
+    for r in results:
+        search_results.append(HybridSearchResult(
+            id=r.get("id", ""),
+            text=r.get("text", r.get("payload", {}).get("text", "")),
+            topic_node=r.get("topic_node", r.get("payload", {}).get("topic_node", "")),
+            source=r.get("source", r.get("payload", {}).get("source", "")),
+            score=r.get("score", 0.0),
+            semantic_score=r.get("semantic_score"),
+            keyword_score=r.get("keyword_score"),
+            fusion_method=r.get("fusion_method"),
+            payload=r.get("payload", {}),
+        ))
+    
+    return HybridSearchResponse(
+        results=search_results,
+        mode=request.mode,
+        query_text=request.query_text,
+        total_results=len(search_results),
+        latency_ms=latency,
+    )
+
+
+@router.get("/search/demo")
+async def search_demo(
+    query: str = "chain rule backpropagation gradient",
+    mode: str = "hybrid",
+    limit: int = 5,
+    alpha: float = 0.6,
+    topic_node: Optional[str] = None,
+    difficulty_min: Optional[int] = None,
+    difficulty_max: Optional[int] = None,
+) -> HybridSearchResponse:
+    """Demo endpoint for testing advanced search."""
+    try:
+        search_mode = SearchMode(mode)
+    except ValueError:
+        search_mode = SearchMode.HYBRID
+    
+    request = HybridSearchRequest(
+        query_text=query,
+        mode=search_mode,
+        limit=limit,
+        alpha=alpha,
+        topic_node=topic_node,
+        difficulty_min=difficulty_min,
+        difficulty_max=difficulty_max,
+    )
+    return await hybrid_search(request)
+
+
+def _build_filter_dict(request: HybridSearchRequest) -> dict | None:
+    """Build a filter dict from structured request fields."""
+    f = {}
+    if request.topic_node:
+        f["topic_node"] = request.topic_node
+    if request.source:
+        f["source"] = request.source
+    if request.lecture_id is not None:
+        f["lecture_id"] = request.lecture_id
+    return f or None
+
+
+def _fallback_semantic_search(request: HybridSearchRequest) -> tuple[list[dict], dict]:
+    """Pure semantic search fallback."""
+    import time as _t
+    
+    embedder = get_embedder()
+    vectorai = get_vectorai()
+    
+    t0 = _t.perf_counter()
+    query_vector, emb_ms = embedder.encode_with_latency(request.query_text)
+    
+    t1 = _t.perf_counter()
+    hits = vectorai.search_similar(query_vector, limit=request.limit, filter=_build_filter_dict(request))
+    ret_ms = (_t.perf_counter() - t1) * 1000
+    
+    results = [
+        {
+            "id": h["id"],
+            "text": h.get("payload", {}).get("text", ""),
+            "topic_node": h.get("payload", {}).get("topic_node", ""),
+            "source": h.get("payload", {}).get("source", ""),
+            "score": h["score"],
+            "semantic_score": h["score"],
+            "payload": h.get("payload", {}),
+        }
+        for h in hits
+    ]
+    
+    latency = {
+        "embedding_ms": round(emb_ms, 1),
+        "semantic_ms": round(ret_ms, 1),
+        "total_ms": round(emb_ms + ret_ms, 1),
+    }
+    return results, latency
+
+
+def _filtered_search(request: HybridSearchRequest) -> tuple[list[dict], dict]:
+    """Filtered search: semantic + structured payload filters."""
+    import time as _t
+    
+    embedder = get_embedder()
+    vectorai = get_vectorai()
+    
+    t0 = _t.perf_counter()
+    query_vector, emb_ms = embedder.encode_with_latency(request.query_text)
+    
+    t1 = _t.perf_counter()
+    # Use the enhanced filtered search if available
+    if hasattr(vectorai, 'search_filtered'):
+        hits = vectorai.search_filtered(
+            query_vector=query_vector,
+            limit=request.limit,
+            topic_node=request.topic_node,
+            source=request.source,
+            lecture_id=request.lecture_id,
+            difficulty_min=request.difficulty_min,
+            difficulty_max=request.difficulty_max,
+            ts_min=request.ts_min,
+            ts_max=request.ts_max,
+        )
+    else:
+        hits = vectorai.search_similar(query_vector, limit=request.limit, filter=_build_filter_dict(request))
+    
+    ret_ms = (_t.perf_counter() - t1) * 1000
+    
+    results = [
+        {
+            "id": h["id"],
+            "text": h.get("payload", {}).get("text", ""),
+            "topic_node": h.get("payload", {}).get("topic_node", ""),
+            "source": h.get("payload", {}).get("source", ""),
+            "score": h["score"],
+            "semantic_score": h["score"],
+            "payload": h.get("payload", {}),
+        }
+        for h in hits
+    ]
+    
+    latency = {
+        "embedding_ms": round(emb_ms, 1),
+        "filtered_search_ms": round(ret_ms, 1),
+        "total_ms": round(emb_ms + ret_ms, 1),
+    }
+    return results, latency

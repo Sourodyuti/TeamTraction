@@ -23,7 +23,9 @@ from models.database import init_all_tables
 from services.embedder import Embedder
 from services.vectorai_client import VectorAIClient
 from services.vector_client import VectorAnalyticsClient
+from services.hybrid_search import BM25Index, HybridSearchEngine, set_hybrid_engine
 from dependencies import set_embedder, set_vectorai, set_analytics
+from dependencies import get_embedder as _dep_get_embedder, get_vectorai as _dep_get_vectorai
 from routers import websocket, asr, retrieval, analytics, recording, transcription, vision
 from routers.auth import router as auth_router
 
@@ -105,6 +107,12 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     try:
         vectorai_client = VectorAIClient()
         vectorai_client.connect()
+        # Also attempt to create multimodal collection for Named Vectors support
+        try:
+            vectorai_client.create_multimodal_collection()
+            logger.info("Multimodal collection ready (named vectors: text + context)")
+        except Exception as mm_err:
+            logger.warning("Multimodal collection setup skipped: %s", mm_err)
         vectorai_client.create_lecture_chunks_collection()
         logger.info("VectorAI DB connected — lecture_chunks collection ready")
         set_vectorai(vectorai_client)
@@ -126,6 +134,25 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     # Log service health summary
     logger.info("Startup complete — embedder=%s, vectorai=%s, analytics=%s",
                 bool(embedder), bool(vectorai_client), bool(vector_analytics))
+
+    # ─── Initialize Hybrid Search Engine (BM25 + RRF Fusion) ────────
+    try:
+        emb = _dep_get_embedder()
+        vdb = _dep_get_vectorai()
+        if emb and vdb:
+            bm25 = BM25Index()
+            hybrid_engine = HybridSearchEngine(
+                vectorai_client=vdb,
+                embedder=emb,
+                bm25_index=bm25,
+            )
+            set_hybrid_engine(hybrid_engine)
+            logger.info("Hybrid search engine initialized (BM25 + RRF fusion)")
+        else:
+            logger.warning("Hybrid search engine skipped — embedder or VectorAI unavailable")
+    except Exception as e:
+        logger.warning("Hybrid search engine init failed (non-fatal): %s", e)
+        set_hybrid_engine(None)
 
     yield  # Application runs here
 
