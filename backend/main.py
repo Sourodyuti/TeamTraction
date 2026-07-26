@@ -19,7 +19,7 @@ from services.ratelimit import RateLimitMiddleware
 
 from config import settings
 from logging_config import setup_logging
-from models.database import init_confusion_events_table
+from models.database import init_all_tables
 from services.embedder import Embedder
 from services.vectorai_client import VectorAIClient
 from services.vector_client import VectorAnalyticsClient
@@ -112,15 +112,15 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         logger.exception("Failed to connect to VectorAI DB — retrieval will be degraded")
         set_vectorai(None)
 
-    # 4. Actian Vector (analytics)
-    logger.info("Connecting to Actian Vector at %s:%d...", settings.vector_host, settings.vector_port)
+    # 4. Analytics backend (Actian Vector via ODBC, or SQLite fallback)
+    logger.info("Initializing analytics backend...")
     try:
         vector_analytics = VectorAnalyticsClient()
-        init_confusion_events_table()
-        logger.info("Actian Vector connected — confusion_events table ready")
+        init_all_tables()
+        logger.info("Analytics backend ready (%s)", vector_analytics.health())
         set_analytics(vector_analytics)
     except Exception as e:
-        logger.exception("Failed to connect to Actian Vector — analytics will be degraded: %s", e)
+        logger.exception("Failed to init analytics backend: %s", e)
         set_analytics(None)
 
     # Log service health summary
@@ -134,15 +134,21 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     from services.mongodb_client import close_mongodb
     await close_mongodb()
     try:
-        from dependencies import get_vectorai, get_analytics
+        from dependencies import get_vectorai
         vdb = get_vectorai()
         if vdb:
             vdb.close()
+    except RuntimeError:
+        pass
+    try:
+        from dependencies import get_analytics
         analytics = get_analytics()
         if analytics:
             analytics.close()
     except RuntimeError:
-        pass  # Service not initialized, that's fine
+        pass
+    from models.database import close_backend
+    close_backend()
     logger.info("Connections closed. Goodbye.")
 
 
