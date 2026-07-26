@@ -19,12 +19,12 @@ _gemini_vision_client: "GeminiVisionClient | None" = None
 _CONTEXT_PROMPT = """You are analyzing a lecture slide shown to students.
 Identify the main concept or topic being discussed.
 
-Respond in this JSON format only:
+Respond STRICTLY with a valid JSON object matching this exact format and nothing else. Do not use markdown wrappers:
 {
   "topic_node": "snake_case_topic_name",
   "slide_text_summary": "brief summary of slide content",
   "difficulty": 1-10,
-  "key_terms": ["term1", "term2", ...]
+  "key_terms": ["term1", "term2"]
 }
 
 If you cannot determine the topic, respond with:
@@ -38,7 +38,7 @@ Context from previous slides: {context}
 
 Provide a helpful, educational answer. Include exactly 2 relevant YouTube video URLs at the end of your answer.
 
-Respond in this JSON format only:
+Respond STRICTLY with a valid JSON object matching this exact format and nothing else. Do not use markdown wrappers:
 {{
   "topic_node": "snake_case_topic_name",
   "slide_text_summary": "brief summary of slide content",
