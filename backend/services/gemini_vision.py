@@ -92,7 +92,7 @@ class GeminiVisionClient:
             if question:
                 from services.knowledge_base import get_knowledge_base
                 hits = get_knowledge_base().search_knowledge(question, lecture_id=1, limit=3)
-                context_str = "\n".join([str(h) for h in hits]) if hits else "None"
+                context_str = "\n".join([f"[Confidence: {h.get('score', 0) * 100:.1f}%] {h.get('payload', {}).get('text', '')}" for h in hits]) if hits else "None"
                 prompt = _ASK_PROMPT.format(question=question, context=context_str)
             else:
                 prompt = _CONTEXT_PROMPT
@@ -185,7 +185,7 @@ class GeminiVisionClient:
         if question:
             from services.knowledge_base import get_knowledge_base
             hits = get_knowledge_base().search_knowledge(question, lecture_id=1, limit=3)
-            context_str = "\n".join([str(h) for h in hits]) if hits else "None"
+            context_str = "\n".join([f"[Confidence: {h.get('score', 0) * 100:.1f}%] {h.get('payload', {}).get('text', '')}" for h in hits]) if hits else "None"
             base_prompt = _ASK_PROMPT.format(question=question, context=context_str)
         else:
             base_prompt = _CONTEXT_PROMPT

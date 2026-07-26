@@ -8,7 +8,7 @@ from __future__ import annotations
 import base64
 import logging
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, BackgroundTasks
 from pydantic import BaseModel
 
 from services.gemini_vision import get_gemini_vision
@@ -37,7 +37,7 @@ class FrameAnalysisResponse(BaseModel):
 
 
 @router.post("/analyze-frame", response_model=FrameAnalysisResponse)
-async def analyze_frame(req: FrameAnalysisRequest) -> FrameAnalysisResponse:
+async def analyze_frame(req: FrameAnalysisRequest, background_tasks: BackgroundTasks) -> FrameAnalysisResponse:
     vision = get_gemini_vision()
     if not vision:
         raise HTTPException(status_code=503, detail="Vision client not initialized")
@@ -76,6 +76,38 @@ async def analyze_frame(req: FrameAnalysisRequest) -> FrameAnalysisResponse:
             topic_node=topic_node,
             difficulty=difficulty
         )
+
+    answer = context.get("answer")
+    if answer:
+        def play_tts_background(text_to_speak: str):
+            from services.elevenlabs_client import ElevenLabsClient
+            import subprocess
+            client = ElevenLabsClient()
+            if client.available:
+                audio_bytes, _ = client.text_to_speech(text_to_speak)
+                if audio_bytes:
+                    try:
+                        # Full volume via mpv or ffplay
+                        subprocess.run(
+                            ["mpv", "--volume=100", "-"], 
+                            input=audio_bytes, 
+                            stderr=subprocess.DEVNULL, 
+                            stdout=subprocess.DEVNULL,
+                            check=False
+                        )
+                    except FileNotFoundError:
+                        try:
+                            subprocess.run(
+                                ["ffplay", "-volume", "100", "-nodisp", "-autoexit", "-i", "-"],
+                                input=audio_bytes,
+                                stderr=subprocess.DEVNULL,
+                                stdout=subprocess.DEVNULL,
+                                check=False
+                            )
+                        except FileNotFoundError:
+                            pass
+
+        background_tasks.add_task(play_tts_background, answer)
 
     return FrameAnalysisResponse(
         topic_node=topic_node,
