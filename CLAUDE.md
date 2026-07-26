@@ -33,7 +33,7 @@ This is a hackathon project built for a Harry-Potter-themed competition. The sys
 │  🔢 bge-small embedder  — Local 384-dim embeddings (CPU)                    │
 └─────────────────────────────────────────────────────────────────────────────┘
                                     │
-                                feat: implement timestamp-aware transcript chunking and add comprehensive unit testing for    ▼ (only anonymized text leaves)
+                                    ▼ (only anonymized text leaves)
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │ CLOUD (Generative step only)                                                │
 │  🤖 Gemini API      — Analogy rewrite per student interest profile          │
@@ -66,7 +66,7 @@ This is a hackathon project built for a Harry-Potter-themed competition. The sys
 |-------|--------|-----|
 | Retrieval DB | Actian VectorAI DB (Docker) | On-prem, air-gapped-capable, 22× faster vector search |
 | Analytics DB | Actian Vector Community (Docker) | Columnar SQL for time-series rollups |
-| Edge Buffer | Actian Zen | Tiny-footprint embedded buffer for offline pings |
+| Edge Buffer | In-memory queue (simulates Actian Zen) | Tiny-footprint embedded buffer for offline pings |
 | Backend | FastAPI + Python 3.11 | Async WebSocket hub; Actian's own tutorial uses FastAPI |
 | Embeddings | bge-small-en (sentence-transformers) | 384-dim, runs on CPU, fast enough for live |
 | ASR | Whisper.cpp (base.en) | Local, no API key, ~real-time on laptop |
@@ -78,8 +78,6 @@ This is a hackathon project built for a Harry-Potter-themed competition. The sys
 | Infra | Docker Compose | One-command bring-up; judge-visible "school server" laptop |
 
 ## Development Commands
-
-Since this is a greenfield project, here are the commands you'll use once the codebase is scaffolded:
 
 ### Docker / Infrastructure
 ```bash
@@ -97,22 +95,30 @@ docker-compose down -v
 ### Backend (FastAPI)
 ```bash
 cd backend
+
 # Install dependencies
 pip install -r requirements.txt
 
-# Run dev server
+# Run dev server (auto-reload)
 uvicorn main:app --reload --host 0.0.0.0 --port 8000
 
 # Run tests
 pytest -v
 
+# Run specific test file
+pytest tests/test_websocket.py -v
+
 # Type check
 mypy .
+
+# Lint
+ruff .
 ```
 
 ### Frontend (Next.js)
 ```bash
 cd frontend
+
 # Install dependencies
 npm install
 
@@ -132,13 +138,13 @@ npm run typecheck
 ### Embedding / ML
 ```bash
 # Download bge-small model (first run)
-python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('BAAI/bge-small-en')"
+python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('BAAI/bge-small-en-v1.5')"
 
 # Test embedding
-python -c "from sentence_transformers import SentenceTransformer; m=SentenceTransformer('BAAI/bge-small-en'); print(m.encode('test').shape)"
+python -c "from sentence_transformers import SentenceTransformer; m=SentenceTransformer('BAAI/bge-small-en-v1.5'); print(m.encode('test').shape)"
 ```
 
-### Whisper.cpp (ASR)
+### Whisper.cpp (ASR - stretch goal)
 ```bash
 # Build whisper.cpp (run once)
 cd whisper.cpp && make base.en
@@ -147,89 +153,160 @@ cd whisper.cpp && make base.en
 ./main -m models/ggml-base.en.bin -f audio.wav
 ```
 
-## Project Structure (Planned)
+### Data Prep
+```bash
+# Chunk + embed lecture transcript (from project root)
+PYTHONPATH=backend python data-prep/chunk_lecture.py --transcript data-prep/sample_lecture.txt --lecture-id 1
+
+# Dry run (print chunks only)
+PYTHONPATH=backend python data-prep/chunk_lecture.py --transcript data-prep/sample_lecture.txt --lecture-id 1 --dry-run
+```
+
+## Current Project Structure
 
 ```
 TeamTraction/
-├── docker-compose.yml          # Orchestrates all services
+├── docker-compose.yml           # VectorAI DB + Actian Vector + FastAPI
+├── CLAUDE.md                    # This file
+├── README.md                    # Project overview
+├── PLAN.md                      # 12-phase 35-hour plan with exit gates
+├── TODO.md                      # Master checklist with phase tracking
+├── TODO-backend.md              # Backend lead tasks
+├── TODO-ai-ml.md                # AI/ML lead tasks
+├── TODO-frontend.md             # Frontend lead tasks
+├── TODO-pm.md                   # PM/Demo lead tasks
+├── BRANCHES.md                  # Branch strategy for 4-person parallel work
+├── GOAL.md                      # North star, success criteria, self-audit
+├── WALKTHROUGH.md               # Technical walkthrough
+├── mcp.json                     # MCP server definitions for AI services
+├── mcp/                         # MCP server implementations
+│   ├── vectorai_db_mcp.py
+│   ├── vector_analytics_mcp.py
+│   ├── embedder_mcp.py
+│   ├── gemini_mcp.py
+│   └── elevenlabs_mcp.py
 ├── backend/
-│   ├── main.py                 # FastAPI app entry point
+│   ├── main.py                  # FastAPI app entry with lifespan, health check
+│   ├── config.py                # Pydantic settings (.env support)
+│   ├── logging_config.py        # Structured logging setup
+│   ├── dependencies.py          # FastAPI dependency injection (singletons)
 │   ├── requirements.txt
-│   ├── config.py               # Settings via pydantic-settings
-│   ├── models/                 # Pydantic models
-│   │   ├── schemas.py
-│   │   └── database.py         # Actian connection helpers
+│   ├── models/
+│   │   ├── __init__.py
+│   │   ├── schemas.py           # Pydantic models (StudentPing, ConfusionEvent, AnalogyRequest/Response, etc.)
+│   │   └── database.py          # Actian Vector connection pool, retry decorator, DDL
 │   ├── routers/
-│   │   ├── websocket.py        # WebSocket hub for live pings
-│   │   ├── retrieval.py        # Accio Analogy endpoint
-│   │   ├── analytics.py        # Pensieve SQL queries
-│   │   └── asr.py              # Whisper transcript ingestion
+│   │   ├── __init__.py
+│   │   ├── websocket.py         # WebSocket hub: /ws/lecture/{lecture_id}
+│   │   ├── retrieval.py         # Accio Analogy: /retrieval/accio, /demo, /cached
+│   │   ├── analytics.py         # Pensieve: /analytics/top-moments, /density, /cohort-heatmap, /summary
+│   │   └── asr.py               # Transcript chunk ingestion: /asr/ingest-chunk
 │   ├── services/
-│   │   ├── vectorai_client.py  # Actian VectorAI DB client
-│   │   ├── vector_client.py    # Actian Vector (analytics) client
-│   │   ├── embedder.py         # bge-small wrapper
-│   │   ├── gemini_client.py    # Analogy rewrite
-│   │   ├── elevenlabs_client.py # TTS
-│   │   └── whisper_service.py  # ASR integration
+│   │   ├── __init__.py
+│   │   ├── embedder.py          # bge-small wrapper (singleton, encode_with_latency)
+│   │   ├── vectorai_client.py   # Actian VectorAI DB (Qdrant) client
+│   │   ├── vector_client.py     # Actian Vector analytics client (SQL)
+│   │   ├── gemini_client.py     # Gemini analogy rewrite
+│   │   ├── elevenlabs_client.py # ElevenLabs TTS
+│   │   ├── whisper_service.py   # Whisper.cpp integration (stretch)
+│   │   └── offline_cache.py     # Pre-cached analogy for offline demo
 │   └── tests/
+│       ├── __init__.py
+│       ├── conftest.py
+│       ├── test_health.py
+│       ├── test_schemas.py
+│       ├── test_database.py
+│       ├── test_websocket.py
+│       ├── test_retrieval.py
+│       ├── test_analytics.py
+│       ├── test_embedder.py
+│       ├── test_gemini_client.py
+│       ├── test_elevenlabs_client.py
+│       ├── test_vectorai_client.py
+│       ├── test_vector_client.py
+│       ├── test_asr.py
+│       └── test_data_prep.py
 ├── frontend/
 │   ├── package.json
+│   ├── tsconfig.json
 │   ├── next.config.js
-│   ├── src/
-│   │   ├── app/
-│   │   │   ├── page.tsx              # Landing / Muffliato PWA
-│   │   │   ├── dashboard/            # Teacher dashboard
-│   │   │   │   ├── page.tsx          # Marauder's Radar
-│   │   │   │   └── pensieve/         # Pensieve analytics
-│   │   │   └── api/                  # Next.js API routes (if needed)
-│   │   ├── components/
-│   │   │   ├── radar/                # D3 radial heatmap
-│   │   │   ├── timeline/             # Recharts timeline
-│   │   │   └── ui/                   # Shared UI components
-│   │   ├── hooks/
-│   │   │   ├── useWebSocket.ts
-│   │   │   └── useRadarData.ts
-│   │   ├── lib/
-│   │   │   ├── api.ts                # FastAPI client
-│   │   │   └── types.ts
-│   │   └── styles/
-│   └── public/
+│   ├── next-env.d.ts
+│   ├── public/
+│   │   └── manifest.json        # PWA manifest
+│   └── src/
+│       ├── app/
+│       │   ├── layout.tsx       # Global styles, fonts, design tokens
+│       │   ├── page.tsx         # Landing page (Legilimens marketing)
+│       │   ├── muffliato/
+│       │   │   └── page.tsx     # Student PWA (Muffliato buttons + avatar picker)
+│       │   └── dashboard/
+│       │       ├── page.tsx     # Marauder's Radar (live D3 + Recharts)
+│       │       └── pensieve/
+│       │           └── page.tsx # Pensieve analytics dashboard
+│       ├── components/
+│       │   ├── landing/         # Landing page sections (Hero, ProblemSolution, etc.)
+│       │   ├── radar/
+│       │   │   └── RadarHeatmap.tsx  # D3 radial heatmap
+│       │   ├── timeline/
+│       │   │   └── Timeline.tsx    # Recharts confusion timeline
+│       │   ├── overlay/         # Screen share + teacher alert overlays
+│       │   └── ui/              # Shared UI (Button, Card, Badge, Section, ScrollReveal)
+│       ├── hooks/
+│       │   ├── useWebSocket.ts      # WebSocket connection + reconnect
+│       │   ├── useRadarData.ts      # Aggregates WS messages for radar/timeline
+│       │   └── useScreenShare.ts    # Screen capture API
+│       ├── lib/
+│       │   ├── api.ts               # FastAPI REST client
+│       │   ├── types.ts             # TypeScript types (ConceptNode, TimelinePoint, etc.)
+│       │   └── design-tokens.ts     # CSS custom properties (Hogwarts theme)
+│       └── styles/
 ├── data-prep/
-│   ├── chunk_lecture.py            # Chunk + embed lecture transcript
-│   ├── load_textbook.py            # Load textbook chapters to VectorAI DB
-│   └── sample_lecture.txt          # Pre-recorded lecture transcript
-├── whisper.cpp/                    # Git submodule or local build
-└── scripts/
-    ├── demo_setup.sh               # Pre-load demo data
-    └── benchmark_latency.py        # Latency measurement for demo
+│   ├── chunk_lecture.py         # Timestamp-aware transcript chunking + embedding
+│   ├── load_textbook.py         # Load textbook chapters to VectorAI DB
+│   ├── sample_lecture.txt       # Pre-recorded backprop lecture transcript
+│   └── backprop_notes.txt       # Textbook content for knowledge vault
+├── scripts/
+│   ├── benchmark_latency.py     # End-to-end latency measurement
+│   └── test_mcp_servers.py      # MCP server test runner
+└── whisper.cpp/                 # Git submodule or local build (stretch)
 ```
 
 ## Key Implementation Notes
 
-### Actian VectorAI DB
-- REST on port 6573, gRPC on 6574
-- Python SDK: `actian_vectorai` (pip install)
-- No auth required for local dev
-- Collection: `lecture_chunks` with 384-dim vectors (Cosine distance)
-- Payload schema: `{topic: str, subtopic: str, difficulty: int, source: str, timestamp: float}`
+### Actian VectorAI DB (Retrieval)
+- **Protocol**: Qdrant-compatible gRPC on port 6574 (REST on 6573)
+- **Python SDK**: `qdrant-client` (installed as `actian-vectorai` in requirements)
+- **Collection**: `lecture_chunks` with 384-dim vectors (Cosine distance)
+- **Payload schema**: `{topic: str, subtopic: str, difficulty: int, source: str, timestamp: float, text: str}`
+- **Client**: `backend/services/vectorai_client.py` — `connect()`, `create_lecture_chunks_collection()`, `upsert_chunks()`, `search_similar()`, `health()`
 
 ### Actian Vector (Analytics)
-- Community Docker image: `actian/vector5.0:community`
-- Columnar SQL via pyodbc/ingres
-- Table: `confusion_events` with columns: `event_id, lecture_id, student_id, concept_node, ts, signal_type, cohort`
-- Key queries: top-3 confusing moments, rolling 60s confusion density, per-cohort heatmaps
+- **Protocol**: ODBC/pyodbc on port 5432 (community Docker image)
+- **Table**: `confusion_events` — columns: `event_id, lecture_id, student_id, concept_node, ts, signal_type, cohort`
+- **Key queries**: 
+  - Top-3 confusing moments (`SUM(CASE WHEN signal_type='lost') GROUP BY concept_node ORDER BY lost_count DESC`)
+  - Rolling 60s confusion density (window function)
+  - Per-cohort heatmap (`GROUP BY cohort, concept_node`)
+- **Client**: `backend/services/vector_client.py` — `insert_confusion_event()`, `get_top_confusing_moments()`, `get_confusion_density_timeline()`, `get_cohort_heatmap()`
 
 ### FastAPI WebSocket Hub
-- Endpoint: `/ws/lecture/{lecture_id}`
-- Message types: `ping` (student), `radar_update` (broadcast), `analogy_audio` (targeted)
-- Manages connection pools per lecture
+- **Endpoint**: `/ws/lecture/{lecture_id}?role=student|teacher`
+- **Inbound message**: `{"type": "ping", "student_id": "...", "signal_type": "lost|gotit|slower"}`
+- **Outbound broadcasts**:
+  - `radar_update` — to all connections in lecture
+  - `analogy_audio` — targeted to lost students (binary audio frames)
+  - `confusion_alert` — to teacher connections
+  - `latency_update` — retrieval latency for on-screen badge
+- **Threshold logic**: ≥2 "lost" signals in 20s window on same `concept_node` → triggers Accio Analogy (30s cooldown per concept)
+- **State**: In-memory per-lecture connection pools, sliding window for threshold
 
 ### Latency Targets (for demo visibility)
-- Ping → Radar: <100ms
-- VectorAI DB search: <50ms
-- Gemini rewrite: ~800ms
-- ElevenLabs TTS: ~600ms
-- **Total: ~1.5s** (display these live on dashboard)
+- Ping → Radar broadcast: **<100ms**
+- VectorAI DB search: **<50ms**
+- Embedding (bge-small): **<20ms** CPU
+- Gemini rewrite: **~800ms**
+- ElevenLabs TTS: **~600ms**
+- **Total end-to-end: ~1.5s** (display live on dashboard badge)
 
 ### Demo Script (3 minutes)
 1. **0:00-0:20** — Hook: "Professors, 40% silently drown — watch the radar catch it." Show empty radar.
@@ -240,38 +317,84 @@ TeamTraction/
 
 ## Environment Variables
 
-Create `.env` files in `backend/` and `frontend/`:
+Create `.env` in `backend/` and `frontend/`:
 
 ```bash
 # backend/.env
 VECTORAI_HOST=localhost
 VECTORAI_PORT=6574
 VECTOR_HOST=localhost
-VECTOR_PORT=5432  # or whatever Actian Vector exposes
+VECTOR_PORT=5432
 VECTOR_DATABASE=actian
 VECTOR_USER=admin
 VECTOR_PASSWORD=password
 GEMINI_API_KEY=your_key
 ELEVENLABS_API_KEY=your_key
 WHISPER_MODEL_PATH=./models/ggml-base.en.bin
+
+# frontend/.env.local
+NEXT_PUBLIC_API_URL=http://localhost:8000
 ```
 
-## Important Implementation Order (35-hour plan)
+## Current Implementation Status (Phase Exit Gates)
 
-1. **Hours 0-2**: Docker Compose up (VectorAI DB + Actian Vector + FastAPI skeleton), verify SDK connects, create `lecture_chunks` collection
-2. **Hours 2-4**: Data prep — pre-record 5-min dense lecture, chunk + embed, pre-load textbook chapter into VectorAI DB
-3. **Hours 4-7**: Capture — Muffliato PWA + WebSocket pipeline; pings land in FastAPI → Actian Vector
-4. **Hours 7-9**: Radar viz — D3 radial heatmap + timeline; live WebSocket feed
-5. **Hours 9-12**: Retrieval loop — Accio Analogy threshold trigger → VectorAI DB search → top-3 retrieval with latency badge
-6. **Hours 12-15**: Generative — Gemini analogy rewrite with student interest profile
-7. **Hours 15-17**: Voice — ElevenLabs TTS streaming back to phone
-8. **Hours 17-19**: Analytics — Actian Vector SQL for top-3 worst moments, per-cohort heatmap; Pensieve dashboard
-9. **Hours 19-21**: Offline mode — Pre-cache one analogy; verify "unplug Ethernet" → retrieval+radar+analytics still work
-10. **Hours 21-23**: Polish + HP theme — Spell names, golden snitch loader, Hogwarts CSS; landing page
-11. **Hours 23-25**: Rehearsal — 3 dry runs of 3-min demo; fix latency spikes
-12. **Hours 25-27**: Buffer / bug fix
-13. **Hours 27-30**: Devfolio submission — README, architecture diagram, 90-sec demo video, deploy dashboard
-14. **Hours 30-35**: Sleep + final demo prep
+| Phase | Description | Status |
+|-------|-------------|--------|
+| 0 | Foundation: Docker Compose, both DBs responding | ✅ **Done** |
+| 1 | Data: Embedded content in VectorAI DB, search works | ✅ **Done** |
+| 2 | Capture: Phone button → DB row + broadcast | ✅ **Done** |
+| 3 | Radar: Two pings flare radar within ~1s | ✅ **Done** |
+| 4 | Retrieval: <50ms measured (on-screen badge) | ✅ **Done** |
+| 5 | Gemini: Analogy reads naturally for ≥2 avatars | ✅ **Done** |
+| 6 | Voice: Student hears analogy within ~1.5s | 🟡 **In Progress** |
+| 7 | Analytics: Pensieve renders real SQL data | ✅ **Done** |
+| 8 | Offline: Cable-pull demo succeeds | 🟡 **In Progress** |
+| 9 | Polish: Demo looks magical (HP theme) | ✅ **Done** |
+| 10 | Rehearsal: Demo runs clean 3× | ⏳ **Pending** |
+| 11 | Submission: Devfolio submitted | ⏳ **Pending** |
+
+## Key Files for Common Tasks
+
+| Task | File(s) |
+|------|---------|
+| Add new WebSocket message type | `backend/routers/websocket.py`, `frontend/src/lib/types.ts` |
+| Modify retrieval pipeline | `backend/routers/retrieval.py`, `backend/services/vectorai_client.py` |
+| Change radar visualization | `frontend/src/components/radar/RadarHeatmap.tsx` |
+| Add Pensieve SQL query | `backend/routers/analytics.py`, `backend/services/vector_client.py` |
+| Modify embedding model | `backend/services/embedder.py` |
+| Change Gemini prompt | `backend/services/gemini_client.py` |
+| Change TTS voice | `backend/services/elevenlabs_client.py` |
+| Add test for WebSocket flow | `backend/tests/test_websocket.py` |
+| Add frontend component test | `frontend/` (Jest/React Testing Library not yet configured) |
+
+## Testing
+
+### Backend
+```bash
+cd backend
+pytest -v                    # All tests
+pytest tests/test_websocket.py -v  # WebSocket tests
+pytest tests/test_retrieval.py -v  # Retrieval pipeline tests
+pytest tests/test_analytics.py -v  # Analytics SQL tests
+```
+
+### Frontend
+```bash
+cd frontend
+npm run typecheck   # TypeScript compilation check
+npm run lint        # ESLint
+```
+
+## Branch Strategy (4-person team)
+
+| Member | Role | Branch | Owns |
+|--------|------|--------|------|
+| M1 | Backend / Actian | `dev/backend` | `backend/routers/*`, `backend/models/*`, `docker-compose.yml` |
+| M2 | AI / ML | `dev/ai-ml` | `backend/services/*`, `data-prep/*`, `scripts/*` |
+| M3 | Frontend | `dev/frontend` | `frontend/**`, `public/**` |
+| M4 | Demo / PM | `dev/pm` | `README.md`, landing page, Devfolio, demo script |
+
+See `BRANCHES.md` for merge/rebase workflow.
 
 ## Key Risks & Mitigations
 
