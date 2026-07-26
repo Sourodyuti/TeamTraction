@@ -6,6 +6,13 @@ from models.schemas import AnalogyResponse, InterestAvatar
 from routers.retrieval import run_retrieval_pipeline
 
 
+def _async_mock_return(value):
+    """Create an AsyncMock that returns the given value."""
+    m = AsyncMock()
+    m.return_value = value
+    return m
+
+
 class TestRunRetrievalPipeline:
     @pytest.mark.asyncio
     async def test_full_pipeline_success(self):
@@ -32,7 +39,7 @@ class TestRunRetrievalPipeline:
             with patch("routers.retrieval.get_vectorai", return_value=mock_vdb):
                 with patch("services.gemini_client.GeminiClient") as MockGemini:
                     with patch("services.elevenlabs_client.ElevenLabsClient") as MockEleven:
-                        MockGemini.return_value.rewrite_analogy.return_value = mock_gemini_response
+                        MockGemini.return_value.rewrite_analogy = _async_mock_return(mock_gemini_response)
                         MockEleven.return_value.get_audio_url.return_value = mock_audio_url
 
                         result = await run_retrieval_pipeline(
@@ -63,7 +70,7 @@ class TestRunRetrievalPipeline:
         with patch("routers.retrieval.get_embedder", return_value=mock_embedder):
             with patch("routers.retrieval.get_vectorai", return_value=mock_vdb):
                 with patch("services.gemini_client.GeminiClient") as MockGemini:
-                    MockGemini.return_value.rewrite_analogy.side_effect = Exception("Gemini timeout")
+                    MockGemini.return_value.rewrite_analogy = AsyncMock(side_effect=Exception("Gemini timeout"))
 
                     with patch("services.elevenlabs_client.ElevenLabsClient") as MockEleven:
                         MockEleven.return_value.get_audio_url.side_effect = Exception("ElevenLabs down")
@@ -91,7 +98,7 @@ class TestRunRetrievalPipeline:
         with patch("routers.retrieval.get_embedder", return_value=mock_embedder):
             with patch("routers.retrieval.get_vectorai", return_value=mock_vdb):
                 with patch("services.gemini_client.GeminiClient") as MockGemini:
-                    MockGemini.return_value.rewrite_analogy.return_value = ("Analogy", 100.0)
+                    MockGemini.return_value.rewrite_analogy = _async_mock_return(("Analogy", 100.0))
 
                     with patch("services.elevenlabs_client.ElevenLabsClient") as MockEleven:
                         MockEleven.return_value.get_audio_url.return_value = None

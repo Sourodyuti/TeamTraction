@@ -1,65 +1,94 @@
-"""Tests for the connection pool and retry logic in models/database.py."""
-import pytest
+"""Tests for the database backends and retry logic in models/database.py."""
 import time
 from unittest.mock import MagicMock, patch
 
-from models.database import ConnectionPool, with_retry
+import pytest
+
+from models.database import SqliteBackend, with_retry
 
 
-class TestConnectionPool:
-    def test_pool_initializes_with_min_connections(self):
-        mock_conn = MagicMock()
-        with patch("models.database.ConnectionPool._create_connection", return_value=mock_conn):
-            pool = ConnectionPool(min_size=2, max_size=5)
+class TestSqliteBackend:
+    def test_init_and_health(self):
+        backend = SqliteBackend(":memory:")
+        assert backend.health()
 
-        assert pool._size == 2
+    def test_table_creation(self):
+        backend = SqliteBackend(":memory:")
+        conn = backend.get_conn()
+        cursor = conn.cursor()
+        cursor.execute("CREATE TABLE test (id INTEGER)")
+        assert backend.table_exists(cursor, "test")
 
-    def test_pool_returns_connection(self):
-        mock_conn = MagicMock()
-        with patch("models.database.ConnectionPool._create_connection", return_value=mock_conn):
-            pool = ConnectionPool(min_size=1, max_size=5)
-            wrapped = pool.get(timeout=1.0)
+    def test_table_not_exists(self):
+        backend = SqliteBackend(":memory:")
+        conn = backend.get_conn()
+        cursor = conn.cursor()
+        assert not backend.table_exists(cursor, "nonexistent")
 
-        assert wrapped is not None
+    def test_index_creation(self):
+        backend = SqliteBackend(":memory:")
+        conn = backend.get_conn()
+        cursor = conn.cursor()
+        cursor.execute("CREATE TABLE test (id INTEGER)")
+        cursor.execute("CREATE INDEX idx_test_id ON test (id)")
+        assert backend.index_exists(cursor, "idx_test_id")
 
-    def test_pool_put_returns_connection(self):
-        mock_conn = MagicMock()
-        with patch("models.database.ConnectionPool._create_connection", return_value=mock_conn):
-            pool = ConnectionPool(min_size=1, max_size=5)
-            wrapped = pool.get(timeout=1.0)
-            pool.put(wrapped)
+    def test_init_confusion_events_table(self):
+        backend = SqliteBackend(":memory:")
+        backend.init_confusion_events_table()
+        conn = backend.get_conn()
+        cursor = conn.cursor()
+        assert backend.table_exists(cursor, "confusion_events")
 
-        # Should still have 1 (not leaked)
-        assert pool._size == 1
+    def test_init_lectures_table(self):
+        backend = SqliteBackend(":memory:")
+        backend.init_lectures_table()
+        conn = backend.get_conn()
+        cursor = conn.cursor()
+        assert backend.table_exists(cursor, "lectures")
 
-    def test_health_returns_true_on_success(self):
-        mock_conn = MagicMock()
-        mock_cursor = MagicMock()
-        mock_cursor.execute = MagicMock()
-        mock_conn.cursor.return_value = mock_cursor
+    def test_init_current_chunk_table(self):
+        backend = SqliteBackend(":memory:")
+        backend.init_current_chunk_table()
+        conn = backend.get_conn()
+        cursor = conn.cursor()
+        assert backend.table_exists(cursor, "current_chunk")
 
-        with patch("models.database.ConnectionPool._create_connection", return_value=mock_conn):
-            pool = ConnectionPool(min_size=1, max_size=5)
-            assert pool.health() is True
+    def test_init_all_tables(self):
+        from models.database import init_all_tables
+        with patch("models.database.get_backend") as mock_get:
+            mock_backend = SqliteBackend(":memory:")
+            mock_get.return_value = mock_backend
+            init_all_tables()
+            conn = mock_backend.get_conn()
+            cursor = conn.cursor()
+            for t in ["confusion_events", "lectures", "current_chunk"]:
+                assert mock_backend.table_exists(cursor, t)
 
-    def test_health_returns_false_on_failure(self):
-        mock_conn = MagicMock()
-        mock_conn.cursor.side_effect = Exception("Connection refused")
+    def test_close(self):
+        backend = SqliteBackend(":memory:")
+        assert backend.health()
+        backend.close()
 
-        with patch("models.database.ConnectionPool._create_connection", return_value=mock_conn):
-            pool = ConnectionPool(min_size=1, max_size=5)
-            assert pool.health() is False
+    def test_idempotent_init(self):
+        backend = SqliteBackend(":memory:")
+        backend.init_confusion_events_table()
+        backend.init_confusion_events_table()
+        assert backend.health()
 
-    def test_close_all_clears_pool(self):
-        mock_conn = MagicMock()
-        with patch("models.database.ConnectionPool._create_connection", return_value=mock_conn):
-            pool = ConnectionPool(min_size=2, max_size=5)
-            assert pool._size == 2
+    def test_get_backend_detects_sqlite(self):
+        with patch.dict("os.environ", {"LEGILIMENS_DB_BACKEND": "sqlite"}, clear=False):
+            from models.database import _detect_backend
+            backend = _detect_backend()
+            assert backend.name == "sqlite"
 
-        pool.close_all()
-        assert pool._size == 0
-        # Queue should be empty
-        assert pool._pool.empty()
+    def test_get_backend_fallback_on_missing_odbc(self):
+        with patch.dict("os.environ", {}, clear=False):
+            with patch("models.database.ActianBackend") as MockActian:
+                MockActian.return_value.health.return_value = False
+                from models.database import _detect_backend
+                backend = _detect_backend()
+                assert backend.name == "sqlite"
 
 
 class TestWithRetry:
@@ -103,10 +132,9 @@ class TestWithRetry:
         with pytest.raises(RuntimeError, match="permanent"):
             always_fails()
 
-        assert call_count == 3  # Should have tried 3 times
+        assert call_count == 3
 
     def test_respects_retryable_exceptions(self):
-        """Only retry on specific exception types."""
         call_count = 0
 
         @with_retry(max_retries=3, backoff_base=0.01, retryable_exceptions=(ValueError,))
@@ -118,4 +146,4 @@ class TestWithRetry:
         with pytest.raises(TypeError):
             wrong_error()
 
-        assert call_count == 1  # Should not retry TypeError
+        assert call_count == 1
