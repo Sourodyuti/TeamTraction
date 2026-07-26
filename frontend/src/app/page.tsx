@@ -1,9 +1,7 @@
-import LandingPageClient from "@/components/landing/LandingPageClient";
+import { redirect } from "next/navigation";
 
-export default function LandingPage() {
-  return (
-    <main id="main-content">
-      <LandingPageClient />
-    </main>
-  );
+// Root route goes straight to the overlay — that is the product.
+// There is no landing page.
+export default function RootPage() {
+  redirect("/overlay");
 }
