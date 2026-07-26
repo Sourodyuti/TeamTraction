@@ -1,4 +1,4 @@
-# Legilimens 🔮 (Team Traction)
+# Legilimens (Team Traction)
 
 ![Legilimens Logo/Header](https://via.placeholder.com/1200x300?text=Legilimens+-+Real-time+Classroom+Mind-Reading)
 
@@ -8,7 +8,7 @@
 
 ---
 
-## 🎯 Purpose
+##  Purpose
 
 In large lectures, students often hesitate to interrupt a professor to say "I don't get it." As a result, professors power through material while a silent majority falls behind. 
 
@@ -20,7 +20,7 @@ In large lectures, students often hesitate to interrupt a professor to say "I do
 
 ---
 
-## 🚀 How We Achieve This
+##  How We Achieve This
 
 We achieve this through a highly optimized, dual-layer architecture combining **edge-based semantic retrieval** and **cloud-based generative AI**.
 
@@ -34,7 +34,7 @@ We achieve this through a highly optimized, dual-layer architecture combining **
 
 ---
 
-## 🧩 Technical Breakdown
+##  Technical Breakdown
 
 Built for a Harry-Potter-themed hackathon, every component carries a spell name reflecting its role:
 
@@ -49,15 +49,15 @@ Built for a Harry-Potter-themed hackathon, every component carries a spell name 
 
 ---
 
-## 🏗️ System Architecture Flowchart
+##  System Architecture Flowchart
 
 ```mermaid
 flowchart TD
   %% Edge / Classroom Layer
   subgraph EDGE ["1. Edge / Classroom (Student Phones + 1 Pi)"]
-    P1["📱 Student Phone<br/>(Muffliato PWA)"]
-    P2["🎤 Whisper.cpp<br/>(Local ASR)"]
-    P3["🍓 Pi / Laptop<br/>(Screen/Video Capture)"]
+    P1[" Student Phone<br/>(Muffliato PWA)"]
+    P2[" Whisper.cpp<br/>(Local ASR)"]
+    P3[" Pi / Laptop<br/>(Screen/Video Capture)"]
   end
 
   %% On-Prem School Server Layer
@@ -117,7 +117,7 @@ flowchart TD
 
 ---
 
-## ⚙️ Setup & Bring-Up Instructions
+##  Setup & Bring-Up Instructions
 
 Follow these steps to run the complete Legilimens stack locally.
 
@@ -137,7 +137,7 @@ Before starting, you must configure your API keys.
    ```
 3. Open `.env` and fill in the required keys.
 
-#### 🔑 Required API Keys:
+####  Required API Keys:
 | Service | Purpose | How to Get It |
 |---|---|---|
 | **Gemini API Key** | Primary Analogy Engine | Get a free key from [Google AI Studio](https://aistudio.google.com/). |
@@ -182,7 +182,7 @@ cd whisper.cpp && make base.en
 
 ---
 
-## 📜 Sponsor Tracks
+##  Sponsor Tracks
 This project was proudly built targeting the **Education** track, leveraging:
 - **Actian** (Primary DB + Vector Search)
 - **Gemini** (Primary LLM Engine)
