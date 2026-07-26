@@ -138,7 +138,7 @@ async def confusion_density(
         """,
         (lecture_id,)
     )
-    return {"data": [{"ts": r[0].isoformat(), "type": r[1]} for r in rows]}
+    return {"data": [{"ts": r[0].isoformat() if not isinstance(r[0], str) else r[0], "type": r[1]} for r in rows]}
 
 @router.get("/cohort-heatmap")
 async def cohort_heatmap(lecture_id: int) -> dict:
