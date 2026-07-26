@@ -221,16 +221,19 @@ class GeminiVisionClient:
             
             start_idx = response_text.find("{")
             end_idx = response_text.rfind("}")
+            context = None
             if start_idx != -1 and end_idx != -1 and end_idx >= start_idx:
                 try:
                     # Clean control chars that Llama sometimes leaves unescaped
                     clean_json = re.sub(r'[\x00-\x1F\x7F]', '', response_text[start_idx:end_idx + 1])
+                    # Fix invalid backslash escapes (e.g., "\ " or "\V") by escaping them
+                    clean_json = re.sub(r'\\(?![\\"\/bfnrt]|u[0-9a-fA-F]{4})', r'\\\\', clean_json)
                     context = json.loads(clean_json)
-                except json.JSONDecodeError:
-                    context = json.loads(response_text[start_idx:end_idx + 1].replace('\n', '\\n'))
-            else:
+                except json.JSONDecodeError as e:
+                    logger.warning("JSON parsing failed despite cleanup: %s. Falling back to regex.", e)
+            
+            if not context:
                 # Robust fallback for conversational markdown headers (Llama NIM quirk)
-                import re
                 context = {}
                 
                 topic_match = re.search(r'\*\*\s*Topic(?: Node)?\s*\*\*\s*:?\s*(.+)', response_text, re.IGNORECASE)
