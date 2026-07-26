@@ -120,15 +120,40 @@ export interface TopConfusingMoment {
   avg_density: number;
 }
 
-export interface DensityPoint {
-  ts: string;
-  density: number;
+/**
+ * Raw confusion event from GET /analytics/density.
+ *
+ * NOTE: the backend returns {data: DensityEvent[]} where each event is a
+ * raw {ts, type} row — NOT a pre-computed density. Density is derived
+ * client-side in lib/analytics-transforms.ts (eventsToDensityTimeline).
+ */
+export interface DensityEvent {
+  ts: string;   // ISO timestamp
+  type: SignalType;
 }
 
-export interface CohortCell {
+/** Wrapper returned by the /analytics/density endpoint. */
+export interface DensityResponse {
+  data: DensityEvent[];
+}
+
+/**
+ * Cohort heatmap returned by GET /analytics/cohort-heatmap.
+ *
+ * NOTE: the backend returns a map {concept_node: {lost, gotit}} — NOT an
+ * array of cells. There is no "hour" axis. Normalized into render rows
+ * by lib/analytics-transforms.ts (cohortMapToGrid).
+ */
+export type CohortMap = Record<string, { lost: number; gotit: number }>;
+
+/** A single concept row in the cohort heatmap grid. */
+export interface CohortRow {
   concept_node: string;
-  hour: number;
-  avg_density: number;
+  label: string;
+  lost: number;
+  gotit: number;
+  total: number;
+  lostDensity: number; // lost / total, 0..1
 }
 
 export interface AnalogyResponse {
@@ -143,4 +168,93 @@ export interface AnalogyResponse {
     gemini: number;
     elevenlabs?: number;
   };
+}
+
+// ─── Phase 8: Command-Center dashboard ──────────────────────────────
+
+/** GET /metrics — operational metrics. */
+export interface MetricsResponse {
+  uptime_seconds: number;
+  embedder_loaded: boolean;
+  vectorai_connected: boolean;
+  analytics_connected: boolean;
+  active_websocket_connections?: number;
+  active_lectures?: number;
+}
+
+/** GET /health. */
+export interface HealthResponse {
+  status: string;
+  service: string;
+  version: string;
+  services: {
+    embedder: boolean;
+    vectorai_db: boolean;
+    actian_vector: boolean;
+  };
+}
+
+/** GET /retrieval/health. */
+export interface RetrievalHealthResponse {
+  embedder: boolean;
+  vectorai_db: boolean;
+  gemini_configured: boolean;
+  elevenlabs_configured: boolean;
+  ready: boolean;
+}
+
+/** GET /vision/health. */
+export interface VisionHealthResponse {
+  available: boolean;
+  model: string;
+}
+
+/** GET /transcription/status. */
+export interface TranscriptionStatusResponse {
+  available: boolean;
+  model: string;
+}
+
+/**
+ * Aggregated system health — merged from the five health/metrics endpoints
+ * by useDashboardPolling. One object the dashboard consumes.
+ */
+export interface ServiceCard {
+  key: string;
+  name: string;
+  healthy: boolean;
+  detail?: string;       // model name, "configured", etc.
+  spellColor: string;    // themed accent from design-tokens spells palette
+}
+
+export interface AggregatedHealth {
+  health: HealthResponse | null;
+  metrics: MetricsResponse | null;
+  retrieval: RetrievalHealthResponse | null;
+  vision: VisionHealthResponse | null;
+  transcription: TranscriptionStatusResponse | null;
+  services: ServiceCard[];
+  loading: boolean;
+  lastUpdated: number | null; // epoch ms
+}
+
+/** Result of POST /analytics/seed. */
+export interface SeedResult {
+  status: string;
+  count: number;
+}
+
+/** Result of GET /retrieval/accio/demo (cached offline analogy). */
+export interface AccioDemoResponse {
+  concept_node: string;
+  original_text: string;
+  analogy_text: string;
+  avatar: string;
+  latency_ms: {
+    embedding: number;
+    retrieval: number;
+    gemini: number;
+    elevenlabs: number;
+  };
+  audio_url?: string;
 }

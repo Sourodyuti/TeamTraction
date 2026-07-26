@@ -1,112 +1,150 @@
 "use client";
 
 /**
- * Marauder's Radar — teacher dashboard (Phase 3).
+ * Legilimens Command Center — the rebuilt teacher dashboard.
  *
- * Live D3 radial heatmap of concept-node confusion + Recharts timeline.
- * Fed by the WebSocket broadcast from FastAPI.
+ * A single tabbed surface visualizing the whole pipeline:
+ *   Muffliato → Marauder's Radar → Accio (Actian VectorAI) →
+ *   Gemino (Gemini/NVIDIA) → Sonorus (ElevenLabs) → Pensieve.
+ *
+ * Data layer: the existing typed `api` client + WebSocket hooks only.
+ *
+ * Two WebSocket connections to the same lecture are intentional and harmless:
+ *   - useRadarData drives the live radar/timeline/alert/analogy state.
+ *   - useWebSocket (shell) exposes sendPing + connected for the DemoController's
+ *     confusion wave. The backend fans out broadcasts to all lecture connections,
+ *     so the radar instance receives the wave's pings too.
  */
-import { useState, useEffect } from "react";
-import { useRadarData } from "@/hooks/useRadarData";
-import { RadarHeatmap } from "@/components/radar/RadarHeatmap";
-import { Timeline } from "@/components/timeline/Timeline";
-import { ScreenCapturePanel } from "@/components/capture/ScreenCapturePanel";
-import { ConfusionOverlay } from "@/components/overlay/ConfusionOverlay";
-import { useScreenCapture } from "@/hooks/useScreenCapture";
+import { useState, useEffect, useCallback } from "react";
 import { useAuth } from "@/hooks/useAuth";
-import Link from "next/link";
+import { useRadarData } from "@/hooks/useRadarData";
+import { useWebSocket } from "@/hooks/useWebSocket";
+import { useDashboardPolling } from "@/hooks/useDashboardPolling";
+import { useConfusionWave } from "@/hooks/useConfusionWave";
+import { api } from "@/lib/api";
+import { DemoController } from "@/components/dashboard/DemoController";
+import { KpiBar } from "@/components/dashboard/KpiBar";
+import { LiveRadarTab } from "@/components/dashboard/LiveRadarTab";
+import { PensieveAnalyticsTab } from "@/components/dashboard/PensieveAnalyticsTab";
+import { AIPipelineTab } from "@/components/dashboard/AIPipelineTab";
+import { SystemTab } from "@/components/dashboard/SystemTab";
+
+type TabKey = "radar" | "analytics" | "pipeline" | "system";
+
+const TABS: { key: TabKey; label: string; icon: string; spell: string }[] = [
+  { key: "radar", label: "Live Radar", icon: "🛰️", spell: "marauders" },
+  { key: "analytics", label: "Analytics", icon: "📜", spell: "pensieve" },
+  { key: "pipeline", label: "AI Pipeline", icon: "⚡", spell: "accio" },
+  { key: "system", label: "System", icon: "🔌", spell: "gemino" },
+];
+
+const SPELL_COLORS: Record<string, string> = {
+  marauders: "#D4AF37",
+  pensieve: "#8A2BE2",
+  accio: "#FF6B35",
+  gemino: "#BB86FC",
+};
 
 export default function DashboardPage() {
   const [lectureId, setLectureId] = useState(1);
+  const [tab, setTab] = useState<TabKey>("radar");
+  const [analyticsRefreshKey, setAnalyticsRefreshKey] = useState(0);
+  const [kpiData, setKpiData] = useState<{
+    total: number;
+    lost: number;
+    gotit: number;
+    metrics: Awaited<ReturnType<typeof api.metrics>> | null;
+    lastLatencyTotal: number | null;
+  } | null>(null);
+
   const { user, loading: authLoading, logout, requireAuth } = useAuth();
-  const { conceptNodes, timelineData, latencyBadge, confusionAlert, lastAnalogy, currentTopic: radarTopic, totalStudents } = useRadarData(lectureId);
-  const [visionTopic, setVisionTopic] = useState<string | null>(null);
-  const captureState = useScreenCapture((context) => {
-    if (context.topic_node && context.topic_node !== "unknown") {
-      setVisionTopic(context.topic_node);
-    }
-  });
-  const [overlayOpen, setOverlayOpen] = useState(true);
-  const currentTopic = visionTopic || radarTopic;
+  const radar = useRadarData(lectureId);
+  // Separate WS connection for the confusion-wave sendPing + connected flag.
+  const { connected: wsConnected, sendPing } = useWebSocket(lectureId, "teacher", "dashboard-controller");
+  const { wave, triggerWave } = useConfusionWave(lectureId, sendPing, wsConnected);
+  const { health: sysHealth } = useDashboardPolling(5000);
 
-  // Guard: teacher-only route
-  useEffect(() => { requireAuth("teacher"); }, [requireAuth]);
-  if (authLoading || !user) return <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", color: "#c9a84c", fontSize: "1.5rem" }}>🔮 Verifying access...</div>;
+  // Teacher-only guard.
+  useEffect(() => {
+    requireAuth("teacher");
+  }, [requireAuth]);
 
-  const currentAlert = confusionAlert || null;
-  const lostCount = currentAlert ? currentAlert.count : 0;
-  
-  const handleTriggerAnalogy = async () => {
-    if (!currentAlert) return;
+  // Load KPI data (summary + metrics + last latency).
+  const loadKpis = useCallback(async () => {
     try {
-      const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8001";
-      await fetch(`${baseUrl}/retrieval/accio`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          lecture_id: lectureId,
-          concept_node: currentAlert.concept_node
-        })
+      const [summary, metrics] = await Promise.all([
+        api.getSummary(lectureId).catch(() => ({ total: 0, lost: 0, gotit: 0 })),
+        api.metrics().catch(() => null),
+      ]);
+      setKpiData({
+        total: summary.total,
+        lost: summary.lost,
+        gotit: summary.gotit,
+        metrics,
+        lastLatencyTotal: radar.latencyBadge?.total_ms ?? null,
       });
-    } catch (e) {
-      console.error(e);
+    } catch {
+      /* non-fatal */
     }
-  };
+  }, [lectureId, radar.latencyBadge?.total_ms]);
+
+  useEffect(() => {
+    loadKpis();
+  }, [loadKpis, analyticsRefreshKey, radar.latencyBadge]);
+
+  // Redirect legacy /dashboard/pensieve viewers: they can just open the Analytics tab here.
+
+  if (authLoading || !user) {
+    return (
+      <div style={styles.loadingScreen}>
+        <div style={styles.loadingIcon}>🔮</div>
+        <div style={styles.loadingText}>Verifying access…</div>
+      </div>
+    );
+  }
+
+  const actianHealthy = sysHealth.health?.services.actian_vector ?? false;
 
   return (
-    <main style={styles.main}>
+    <main className="lg-dash-main" style={styles.main}>
+      <style>{globalStyles}</style>
+
+      {/* Header */}
       <header style={styles.header}>
-        <div style={{ display: "flex", alignItems: "center", gap: "1rem" }}>
-          <h1 style={styles.title}>
-            📡 Marauder&apos;s Radar
-            {captureState.recordingStatus === 'recording' && (
-              <span style={{ marginLeft: '10px', fontSize: '1rem', color: '#dc2626', animation: 'pulse-glow 2s infinite' }}>🔴 REC</span>
-            )}
+        <div style={styles.headerLeft}>
+          <h1 className="lg-dash-title" style={styles.title}>
+            <span style={styles.titleIcon}>📡</span> Legilimens Command Center
           </h1>
-          <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-            <label style={{ color: "var(--gryffindor-gold)", fontSize: "0.9rem" }}>Lecture:</label>
-            <input 
-              type="number" 
-              value={lectureId} 
-              onChange={(e) => setLectureId(Number(e.target.value) || 1)} 
-              style={{ width: "60px", background: "rgba(0,0,0,0.3)", color: "white", border: "1px solid rgba(255,255,255,0.2)", borderRadius: "4px", padding: "0.25rem 0.5rem" }}
+          <div style={styles.lectureInput}>
+            <label style={styles.inputLabel}>Lecture</label>
+            <input
+              type="number"
               min={1}
+              value={lectureId}
+              onChange={(e) => setLectureId(Number(e.target.value) || 1)}
+              style={styles.input}
             />
           </div>
-          <button 
-            style={{
-              ...styles.recordToggle,
-              background: captureState.recordingStatus === 'recording' ? "rgba(220, 38, 38, 0.2)" : "rgba(255, 255, 255, 0.1)",
-              borderColor: captureState.recordingStatus === 'recording' ? "#dc2626" : "rgba(255, 255, 255, 0.3)"
-            }}
-            onClick={() => {
-              if (captureState.recordingStatus === 'recording') {
-                captureState.stopRecording();
-              } else {
-                if (!captureState.isCapturing) {
-                  captureState.startCapture().then(() => captureState.startRecording(lectureId));
-                } else {
-                  captureState.startRecording(lectureId);
-                }
-              }
-            }}
-          >
-            {captureState.recordingStatus === 'recording' ? "🔴 Stop Recording" : "⏺ Record Lecture"}
-          </button>
         </div>
-        {/* Latency badge + user badge */}
-        <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
-          <div style={styles.badge}>
-            {latencyBadge?.total_ms != null
-              ? `edge retrieval: ${latencyBadge.total_ms}ms · 0 cloud calls`
-              : "awaiting signal..."}
-          </div>
+        <div style={styles.headerRight}>
+          <Pill
+            ok={wsConnected}
+            okLabel="WS live"
+            badLabel="WS off"
+            okColor="#50C878"
+          />
+          <Pill
+            ok={actianHealthy}
+            okLabel="Actian Vector"
+            badLabel="SQLite fallback"
+            okColor="#D4AF37"
+          />
           {user && (
             <div style={styles.userBadge}>
               <div style={styles.userAvatar}>{user.username[0].toUpperCase()}</div>
-              <div style={{ display: "flex", flexDirection: "column", lineHeight: 1.2 }}>
-                <span style={{ fontWeight: 700, fontSize: "0.85rem", color: "#c9a84c" }}>{user.username}</span>
-                <span style={{ fontSize: "0.7rem", color: "rgba(255,255,255,0.45)", textTransform: "uppercase" }}>{user.role}</span>
+              <div style={styles.userMeta}>
+                <span style={styles.userName}>{user.username}</span>
+                <span style={styles.userRole}>{user.role}</span>
               </div>
               <button onClick={logout} style={styles.logoutBtn} title="Sign out">↩</button>
             </div>
@@ -114,153 +152,236 @@ export default function DashboardPage() {
         </div>
       </header>
 
-      <div style={styles.grid}>
-        <div style={styles.leftCol}>
-          <section style={styles.radarSection}>
-            <RadarHeatmap nodes={conceptNodes} />
-          </section>
+      {/* Demo controller (sticky) */}
+      <DemoController
+        lectureId={lectureId}
+        wsConnected={wsConnected}
+        onLoad={() => setAnalyticsRefreshKey((k) => k + 1)}
+        triggerWave={(c, n) => triggerWave(c, n)}
+        waveMessage={wave.message}
+        waveFiring={wave.firing}
+      />
 
-          <section style={styles.timelineSection}>
-            <h2>Confusion Timeline</h2>
-            <Timeline data={timelineData} />
-          </section>
-        </div>
-        
-        <div style={styles.rightCol}>
-          <ScreenCapturePanel lectureId={lectureId} captureState={captureState} currentTopic={currentTopic} />
-        </div>
+      {/* KPI bar */}
+      <KpiBar data={kpiData} loading={!kpiData} />
+
+      {/* Tabs */}
+      <nav style={styles.tabNav}>
+        {TABS.map((t) => (
+          <button
+            key={t.key}
+            onClick={() => setTab(t.key)}
+            style={{
+              ...styles.tab,
+              color: tab === t.key ? SPELL_COLORS[t.spell] : "rgba(245,230,200,0.5)",
+              borderColor: tab === t.key ? SPELL_COLORS[t.spell] : "transparent",
+              background: tab === t.key ? `${SPELL_COLORS[t.spell]}15` : "transparent",
+            }}
+          >
+            <span style={styles.tabIcon}>{t.icon}</span>
+            <span>{t.label}</span>
+          </button>
+        ))}
+      </nav>
+
+      {/* Active tab */}
+      <div className="lg-dash-tab-body" style={styles.tabBody}>
+        {tab === "radar" && (
+          <LiveRadarTab
+            conceptNodes={radar.conceptNodes}
+            timelineData={radar.timelineData}
+            latencyBadge={radar.latencyBadge}
+            confusionAlert={radar.confusionAlert}
+            lastAnalogy={radar.lastAnalogy}
+            totalStudents={radar.totalStudents}
+            currentTopic={radar.currentTopic}
+          />
+        )}
+        {tab === "analytics" && (
+          <PensieveAnalyticsTab lectureId={lectureId} refreshKey={analyticsRefreshKey} />
+        )}
+        {tab === "pipeline" && <AIPipelineTab latencyBadge={radar.latencyBadge} />}
+        {tab === "system" && <SystemTab health={sysHealth} />}
       </div>
 
+      {/* Footer links to other surfaces */}
       <footer style={styles.footer}>
-        <Link href="/dashboard/pensieve" style={styles.link}>
-          📜 View Pensieve analytics →
-        </Link>
-        <Link href="/dashboard/review" style={styles.link}>
-          📼 Review Recording →
-        </Link>
+        <span style={styles.footerText}>
+          Spells: <em>Muffliato</em> capture · <em>Marauder&apos;s</em> radar · <em>Accio</em> retrieval (Actian VectorAI) · <em>Gemino</em> LLM (Gemini/NVIDIA) · <em>Sonorus</em> TTS (ElevenLabs) · <em>Pensieve</em> analytics (Actian Vector)
+        </span>
       </footer>
-
-      {overlayOpen && (
-        <ConfusionOverlay
-          conceptNode={currentAlert?.concept_node || lastAnalogy?.concept_node || "Unknown"}
-          lostCount={lostCount}
-          totalStudents={totalStudents > 0 ? totalStudents : 20}
-          lastAnalogy={lastAnalogy?.analogy_text}
-          onTriggerAnalogy={handleTriggerAnalogy}
-          visible={overlayOpen}
-          onClose={() => setOverlayOpen(false)}
-        />
-      )}
     </main>
   );
 }
 
-const styles = {
+function Pill({ ok, okLabel, badLabel, okColor }: { ok: boolean; okLabel: string; badLabel: string; okColor: string }) {
+  return (
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: "0.35rem",
+        padding: "0.3rem 0.7rem",
+        borderRadius: "999px",
+        fontSize: "0.72rem",
+        fontFamily: '"JetBrains Mono", monospace',
+        background: ok ? `${okColor}15` : "rgba(220,20,60,0.1)",
+        border: `1px solid ${ok ? `${okColor}55` : "rgba(220,20,60,0.4)"}`,
+        color: ok ? okColor : "#DC143C",
+      }}
+      title={ok ? okLabel : badLabel}
+    >
+      <span
+        style={{
+          width: 7,
+          height: 7,
+          borderRadius: "50%",
+          background: ok ? okColor : "#DC143C",
+          animation: "pulse 2s ease-in-out infinite",
+        }}
+      />
+      {ok ? okLabel : badLabel}
+    </div>
+  );
+}
+
+const globalStyles = `
+  @keyframes pulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.6; transform: scale(1.08); }
+  }
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  .lg-dash-tab-body { animation: fadeIn 0.3s ease-out; }
+
+  /* Responsive: collapse multi-column layouts on smaller / projector-friendlier widths. */
+  @media (max-width: 1100px) {
+    .lg-dash-radar-grid { grid-template-columns: 1fr !important; }
+    .lg-dash-two-col { grid-template-columns: 1fr !important; }
+    .lg-dash-pipeline { flex-direction: column !important; }
+    .lg-dash-pipeline .lg-dash-arrow { transform: rotate(90deg); }
+  }
+  @media (max-width: 768px) {
+    .lg-dash-main { padding: 1rem !important; }
+    .lg-dash-title { font-size: 1.3rem !important; }
+  }
+`;
+
+const styles: Record<string, React.CSSProperties> = {
   main: {
     minHeight: "100vh",
     padding: "1.5rem",
-    maxWidth: "1400px",
+    maxWidth: 1500,
     margin: "0 auto",
+    color: "#F5E6C8",
+    fontFamily: '"Inter", system-ui, sans-serif',
   },
   header: {
     display: "flex",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: "2rem",
-    flexWrap: "wrap" as const,
+    marginBottom: "1.25rem",
+    flexWrap: "wrap",
     gap: "1rem",
   },
+  headerLeft: { display: "flex", alignItems: "center", gap: "1.5rem", flexWrap: "wrap" },
   title: {
-    color: "var(--gryffindor-gold)",
+    fontFamily: '"Cinzel", serif',
+    color: "#D4AF37",
     margin: 0,
-  },
-  recordToggle: {
-    padding: "0.5rem 1rem",
-    borderRadius: "8px",
-    borderWidth: "1px",
-    borderStyle: "solid",
-    color: "white",
-    fontWeight: "bold",
-    cursor: "pointer",
-    transition: "all 0.2s",
-  },
-  badge: {
-    background: "var(--slytherin-green)",
-    padding: "0.5rem 1rem",
-    borderRadius: "8px",
-    fontFamily: "monospace",
-    fontSize: "0.9rem",
-  },
-  grid: {
-    display: "grid",
-    gridTemplateColumns: "70% 30%",
-    gap: "2rem",
-  },
-  leftCol: {
+    fontSize: "1.6rem",
+    letterSpacing: "0.02em",
     display: "flex",
-    flexDirection: "column" as const,
+    alignItems: "center",
+    gap: "0.5rem",
   },
-  rightCol: {
-    display: "flex",
-    flexDirection: "column" as const,
+  titleIcon: { fontSize: "1.4rem" },
+  lectureInput: { display: "flex", alignItems: "center", gap: "0.4rem" },
+  inputLabel: { fontSize: "0.75rem", color: "rgba(245,230,200,0.6)", textTransform: "uppercase", letterSpacing: "0.05em" },
+  input: {
+    width: 60,
+    background: "rgba(0,0,0,0.4)",
+    color: "#F5E6C8",
+    border: "1px solid rgba(212,175,55,0.3)",
+    borderRadius: "6px",
+    padding: "0.3rem 0.5rem",
+    fontFamily: '"JetBrains Mono", monospace',
   },
-  radarSection: {
-    background: "rgba(255,255,255,0.05)",
-    borderRadius: "12px",
-    padding: "1rem",
-    marginBottom: "2rem",
-    display: "flex",
-    justifyContent: "center",
-  },
-  timelineSection: {
-    background: "rgba(255,255,255,0.05)",
-    borderRadius: "12px",
-    padding: "1.5rem",
-    marginBottom: "2rem",
-  },
-  footer: {
-    display: "flex",
-    justifyContent: "space-between",
-    marginTop: "2rem",
-    padding: "1rem 0",
-    borderTop: "1px solid rgba(255,255,255,0.1)",
-  },
-  link: {
-    color: "var(--gryffindor-gold)",
-    textDecoration: "none",
-    fontSize: "1.1rem",
-  },
+  headerRight: { display: "flex", alignItems: "center", gap: "0.6rem", flexWrap: "wrap" },
   userBadge: {
     display: "flex",
     alignItems: "center",
     gap: "0.5rem",
-    background: "rgba(201,168,76,0.08)",
-    border: "1px solid rgba(201,168,76,0.25)",
+    background: "rgba(212,175,55,0.08)",
+    border: "1px solid rgba(212,175,55,0.25)",
     borderRadius: "10px",
-    padding: "0.4rem 0.75rem",
+    padding: "0.35rem 0.7rem",
   },
   userAvatar: {
-    width: 30,
-    height: 30,
+    width: 28,
+    height: 28,
     borderRadius: "50%",
-    background: "linear-gradient(135deg, #7c3aed, #c9a84c)",
+    background: "linear-gradient(135deg, #7c3aed, #D4AF37)",
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
-    fontSize: "0.85rem",
+    fontSize: "0.8rem",
     fontWeight: 700,
     color: "#fff",
-    flexShrink: 0,
   },
+  userMeta: { display: "flex", flexDirection: "column", lineHeight: 1.15 },
+  userName: { fontWeight: 700, fontSize: "0.82rem", color: "#D4AF37" },
+  userRole: { fontSize: "0.66rem", color: "rgba(245,230,200,0.45)", textTransform: "uppercase" },
   logoutBtn: {
     background: "none",
     border: "none",
-    color: "rgba(255,255,255,0.4)",
+    color: "rgba(245,230,200,0.4)",
     cursor: "pointer",
     fontSize: "1rem",
     padding: "0 0.1rem",
-    lineHeight: 1,
-    transition: "color 0.2s",
   },
+  tabNav: {
+    display: "flex",
+    gap: "0.4rem",
+    borderBottom: "1px solid rgba(212,175,55,0.15)",
+    marginBottom: "1.25rem",
+    flexWrap: "wrap",
+  },
+  tab: {
+    display: "flex",
+    alignItems: "center",
+    gap: "0.4rem",
+    padding: "0.6rem 1rem",
+    background: "transparent",
+    border: "none",
+    borderBottom: "2px solid transparent",
+    cursor: "pointer",
+    fontFamily: '"Cinzel", serif',
+    fontSize: "0.88rem",
+    fontWeight: 600,
+    transition: "all 0.2s",
+    marginBottom: "-1px",
+  },
+  tabIcon: { fontSize: "0.95rem" },
+  tabBody: { animation: "fadeIn 0.3s ease-out", paddingBottom: "2rem" },
+  footer: {
+    marginTop: "2rem",
+    paddingTop: "1rem",
+    borderTop: "1px solid rgba(212,175,55,0.1)",
+    textAlign: "center",
+  },
+  footerText: { fontSize: "0.72rem", color: "rgba(245,230,200,0.35)", lineHeight: 1.6 },
+  loadingScreen: {
+    minHeight: "100vh",
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: "1rem",
+    background: "#0D0714",
+  },
+  loadingIcon: { fontSize: "3rem", animation: "pulse 2s ease-in-out infinite" },
+  loadingText: { fontFamily: '"Cinzel", serif', color: "#D4AF37", fontSize: "1.2rem" },
 };
-
