@@ -49,7 +49,7 @@ async def run_retrieval_pipeline(
     """
     latency = {"embedding": 0.0, "retrieval": 0.0, "gemini": 0.0, "elevenlabs": 0.0}
 
-    # ─── 1. Embed the confusing chunk ─────────────────────────────
+    # ─── 1. Embed the confusing chunk ─────────────────────────────────
     embedder = get_embedder()
     try:
         query_vector, emb_ms = embedder.encode_with_latency(chunk_text)
@@ -59,7 +59,7 @@ async def run_retrieval_pipeline(
         logger.error("Embedding failed — cannot proceed: %s", e)
         raise HTTPException(status_code=503, detail=f"Embedding service unavailable: {e}")
 
-    # ─── 2. Retrieve best past explanations from VectorAI DB ──────
+    # ─── 2. Retrieve best past explanations from VectorAI DB ──────────
     vectorai = get_vectorai()
     try:
         t0 = _time.perf_counter()
@@ -74,7 +74,6 @@ async def run_retrieval_pipeline(
         else:
             hit = hits[0]
             if isinstance(hit, dict):
-                # Result is {"id": ..., "payload": {"text": ..., ...}, "score": ...}
                 payload = hit.get("payload", {})
                 best_text = payload.get("text") or hit.get("text") or chunk_text
             else:
@@ -83,11 +82,10 @@ async def run_retrieval_pipeline(
                 best_text = chunk_text
     except Exception as e:
         logger.error("Retrieval failed: %s", e)
-        # Core failure — can't do anything without retrieval
         raise HTTPException(status_code=503, detail=f"Retrieval service unavailable: {e}")
 
-    # ─── 3. Rewrite as an analogy via Gemini ──────────────────────
-    analogy_text = best_text  # Default: return raw retrieved text
+    # ─── 3. Rewrite as an analogy via Gemini ───────────────────────
+    analogy_text = best_text
     try:
         from services.gemini_client import GeminiClient
         gemini = GeminiClient()
@@ -95,11 +93,10 @@ async def run_retrieval_pipeline(
         latency["gemini"] = gemini_ms
         logger.debug("Gemini rewrite: %.1fms", gemini_ms)
     except Exception as e:
-        # Non-fatal: return the raw retrieved text if Gemini fails
         logger.warning("Gemini rewrite failed (non-fatal, using raw text): %s", e)
         latency["gemini"] = 0.0
 
-    # ─── 4. Convert to speech via ElevenLabs ──────────────────────
+    # ─── 4. Convert to speech via ElevenLabs ───────────────────────
     audio_url = None
     try:
         from services.elevenlabs_client import ElevenLabsClient
@@ -120,7 +117,6 @@ async def run_retrieval_pipeline(
                 audio_url = f"data:audio/mpeg;base64,{encoded}"
         logger.debug("ElevenLabs TTS: latency=%.1fms", latency["elevenlabs"])
     except Exception as e:
-        # Non-fatal: return text only, no audio
         logger.warning("ElevenLabs TTS failed (non-fatal, text-only): %s", e)
 
     total_ms = sum(latency.values())
@@ -139,23 +135,13 @@ async def run_retrieval_pipeline(
     )
 
 
-# ─── REST endpoint ───────────────────────────────────────────────
+# ─── REST endpoint ─────────────────────────────────────────────
 
 @router.post("/accio", response_model=AnalogyResponse)
 async def accio_analogy(request: AnalogyRequest) -> AnalogyResponse:
-    """Trigger Accio Analogy manually via REST.
-
-    Body:
-        {
-            "concept_node": "chain_rule",
-            "chunk_text": "The chain rule multiplies gradients layer by layer...",
-            "student_ids": ["student_abc"],
-            "avatar": "cricketer"
-        }
-    """
+    """Trigger Accio Analogy manually via REST."""
     logger.info("REST trigger: accio analogy for '%s' (avatar=%s)",
                 request.concept_node, request.avatar.value)
-
     return await run_retrieval_pipeline(
         concept_node=request.concept_node,
         chunk_text=request.chunk_text,
@@ -185,19 +171,28 @@ async def accio_cached(
 ) -> Response:
     """Serve a pre-cached analogy MP3 from disk (offline/cable-pull demo mode).
 
-    Returns audio/mpeg if the cache hit exists, 404 otherwise.
+    Returns audio/mpeg if a cached MP3 exists, plain text analogy otherwise, 404 if
+    nothing is cached at all.
+
+    fix #5: get_cached_analogy() stores MP3 bytes under the key 'audio_bytes'
+    (see offline_cache.py). The previous code read result.get('audio', b'')
+    which always returned b'' — so the endpoint always fell through to the
+    text fallback, silently breaking the cable-pull demo moment.
     """
     result = get_cached_analogy(concept_node=concept_node, avatar_str=avatar.value)
     if result is None:
         raise HTTPException(
             status_code=404,
-            detail=f"No cached analogy for concept={concept_node} avatar={avatar.value}. "
-                   "Run scripts/demo_setup.sh to pre-cache.",
+            detail=(
+                f"No cached analogy for concept={concept_node} avatar={avatar.value}. "
+                "Run scripts/demo_setup.sh to pre-cache."
+            ),
         )
 
-    audio_bytes: bytes = result.get("audio", b"")
+    # fix #5: correct key is 'audio_bytes', not 'audio'
+    audio_bytes: bytes = result.get("audio_bytes", b"")
     if not audio_bytes:
-        # Cache hit (JSON metadata) but no MP3 — return the text response
+        # Cache hit (JSON metadata only) — return the text analogy
         return Response(
             content=result.get("analogy_text", ""),
             media_type="text/plain",
@@ -208,7 +203,7 @@ async def accio_cached(
 
 @router.get("/audio/{job_id}")
 async def get_audio(job_id: str) -> Response:
-    """Serve pre-generated audio bytes."""
+    """Serve pre-generated audio bytes by job ID."""
     if job_id not in AUDIO_CACHE:
         raise HTTPException(status_code=404, detail="Audio not found or expired")
     return Response(content=AUDIO_CACHE[job_id], media_type="audio/mpeg")
@@ -216,7 +211,7 @@ async def get_audio(job_id: str) -> Response:
 
 @router.get("/health")
 async def retrieval_health() -> dict:
-    """Check the health of the retrieval pipeline dependencies."""
+    """Check health of retrieval pipeline dependencies."""
     embedder_ok = False
     vectorai_ok = False
     gemini_configured = bool(settings.gemini_api_key)
