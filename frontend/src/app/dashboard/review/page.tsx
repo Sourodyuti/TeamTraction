@@ -19,7 +19,7 @@ export default function ReviewPage() {
     const fetchManifest = async () => {
       try {
         const token = localStorage.getItem("legilimens_token");
-        const resp = await fetch(`http://localhost:8001/recording/${lectureId}/manifest`, {
+        const resp = await fetch(`http://localhost:8000/recording/${lectureId}/manifest`, {
           headers: token ? { "Authorization": `Bearer ${token}` } : {}
         });
         if (!resp.ok) throw new Error("Manifest fetch failed");
@@ -39,7 +39,7 @@ export default function ReviewPage() {
     }
     try {
       const token = localStorage.getItem("legilimens_token");
-      const resp = await fetch("http://localhost:8001/retrieval/accio", {
+      const resp = await fetch("http://localhost:8000/retrieval/accio", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -72,7 +72,7 @@ export default function ReviewPage() {
     
     try {
       const token = localStorage.getItem("legilimens_token");
-      const resp = await fetch(`http://localhost:8001/recording/${lectureId}/chunk/${chunkId}`, {
+      const resp = await fetch(`http://localhost:8000/recording/${lectureId}/chunk/${chunkId}`, {
         headers: token ? { "Authorization": `Bearer ${token}` } : {}
       });
       if (!resp.ok) throw new Error("Chunk fetch failed");

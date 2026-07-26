@@ -3,7 +3,7 @@
  * Stores JWT in localStorage under "legilimens_token".
  */
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8001";
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 const TOKEN_KEY = "legilimens_token";
 const USER_KEY  = "legilimens_user";
 

@@ -79,3 +79,36 @@ async def stream_recording(websocket: WebSocket, lecture_id: int):
     except WebSocketDisconnect:
         if websocket in active_connections.get(lecture_id, []):
             active_connections[lecture_id].remove(websocket)
+
+@router.post("/{lecture_id}/start")
+async def start_session(lecture_id: int):
+    """Start a recording session for a lecture."""
+    svc = get_recording_service()
+    session = svc.start_session(lecture_id)
+    return session
+
+@router.post("/{lecture_id}/stop")
+async def stop_session(lecture_id: int):
+    """Stop a recording session."""
+    svc = get_recording_service()
+    svc.end_session(lecture_id)
+    return {"status": "stopped", "lecture_id": lecture_id}
+
+@router.get("/{lecture_id}/status")
+async def session_status(lecture_id: int):
+    """Get recording session status."""
+    svc = get_recording_service()
+    return svc.get_session_status(lecture_id)
+
+@router.get("/{lecture_id}/full-manifest")
+async def full_manifest(lecture_id: int):
+    """Get the full manifest from disk (survives restarts)."""
+    svc = get_recording_service()
+    return svc.get_full_manifest(lecture_id)
+
+@router.get("/{lecture_id}/kb-chunks")
+async def get_kb_chunks(lecture_id: int):
+    """Get all knowledge base indexed chunks for a lecture."""
+    from services.knowledge_base import get_knowledge_base
+    kb = get_knowledge_base()
+    return kb.get_all_chunks(lecture_id)

@@ -284,3 +284,28 @@ export interface AccioDemoResponse {
   };
   audio_url?: string;
 }
+
+// ─── Recording Session ───────────────────────────────────────────
+
+export interface RecordingSession {
+  lecture_id: number;
+  started_at: string;
+  is_active: boolean;
+  duration_seconds: number;
+  chunk_count: number;
+}
+
+export interface RecordingStatus {
+  lecture_id: number;
+  is_active: boolean;
+  started_at: string | null;
+  duration_seconds: number;
+  chunk_count: number;
+}
+
+export interface KBChunk {
+  chunk_id: string;
+  topic_node: string;
+  ts: number;
+  text_preview: string;
+}

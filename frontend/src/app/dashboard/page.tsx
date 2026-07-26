@@ -21,6 +21,7 @@ import { useRadarData } from "@/hooks/useRadarData";
 import { useWebSocket } from "@/hooks/useWebSocket";
 import { useDashboardPolling } from "@/hooks/useDashboardPolling";
 import { useConfusionWave } from "@/hooks/useConfusionWave";
+import { useLectureRecording } from "@/hooks/useLectureRecording";
 import { api } from "@/lib/api";
 import { DemoController } from "@/components/dashboard/DemoController";
 import { KpiBar } from "@/components/dashboard/KpiBar";
@@ -63,6 +64,7 @@ export default function DashboardPage() {
   const { connected: wsConnected, sendPing } = useWebSocket(lectureId, "teacher", "dashboard-controller");
   const { wave, triggerWave } = useConfusionWave(lectureId, sendPing, wsConnected);
   const { health: sysHealth } = useDashboardPolling(5000);
+  const { isRecording, elapsedFormatted, startRecording, stopRecording, error: recordingError } = useLectureRecording(1, true);
 
   // Teacher-only guard.
   useEffect(() => {
@@ -127,6 +129,42 @@ export default function DashboardPage() {
           </div>
         </div>
         <div style={styles.headerRight}>
+          <div style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "0.75rem",
+            padding: "0.5rem 1rem",
+            background: isRecording ? "rgba(239, 68, 68, 0.15)" : "rgba(255,255,255,0.05)",
+            border: `1px solid ${isRecording ? "rgba(239, 68, 68, 0.4)" : "rgba(255,255,255,0.1)"}`,
+            borderRadius: "12px",
+            fontSize: "0.9rem",
+          }}>
+            <span style={{
+              width: "10px",
+              height: "10px",
+              borderRadius: "50%",
+              background: isRecording ? "#ef4444" : "#6b7280",
+              animation: isRecording ? "pulse 1.5s infinite" : "none",
+            }} />
+            <span style={{ fontWeight: 600, color: isRecording ? "#fca5a5" : "rgba(255,255,255,0.5)" }}>
+              {isRecording ? `REC ${elapsedFormatted}` : "Stopped"}
+            </span>
+            <button
+              onClick={isRecording ? stopRecording : startRecording}
+              style={{
+                padding: "0.25rem 0.75rem",
+                borderRadius: "8px",
+                border: "none",
+                background: isRecording ? "rgba(239, 68, 68, 0.3)" : "var(--gryffindor-gold)",
+                color: isRecording ? "#fca5a5" : "#000",
+                fontSize: "0.8rem",
+                fontWeight: 600,
+                cursor: "pointer",
+              }}
+            >
+              {isRecording ? "⏹ Stop" : "🔴 Start"}
+            </button>
+          </div>
           <Pill
             ok={wsConnected}
             okLabel="WS live"

@@ -5,6 +5,7 @@ from fastapi import APIRouter, UploadFile, File, WebSocket, WebSocketDisconnect,
 from pydantic import BaseModel
 
 from services.whisper_service import get_whisper_service
+from services.recording_service import get_recording_service
 from routers.asr import ChunkIngest, ingest_chunk
 from routers.websocket import broadcast_to_lecture
 
@@ -34,23 +35,43 @@ async def get_status():
 async def live_transcription(websocket: WebSocket, lecture_id: int):
     await websocket.accept()
     ws_svc = get_whisper_service()
+    rec_svc = get_recording_service()
+    
+    # Track timestamps for recording chunks
+    session_start = time.time()
+    chunk_start = session_start
     
     try:
         while True:
-            # Receive binary audio chunk
             audio_bytes = await websocket.receive_bytes()
+            chunk_end = time.time()
             
             if not ws_svc.available:
+                chunk_start = chunk_end
                 continue
                 
             text = ws_svc.transcribe_stream_chunk(audio_bytes)
+            
+            # Always persist audio to recording service (even if transcript is empty)
+            # This ensures we have a complete recording
+            try:
+                rec_svc.add_chunk(
+                    lecture_id=lecture_id,
+                    audio_bytes=audio_bytes,
+                    start_ts=chunk_start - session_start,
+                    end_ts=chunk_end - session_start,
+                    transcript_text=text.strip() if text else ""
+                )
+            except Exception as rec_err:
+                logger.warning("Recording chunk failed (non-fatal): %s", rec_err)
+            
+            chunk_start = chunk_end
+            
             if not text.strip():
                 continue
                 
             # Create chunk ingest payload
             ts_now = time.time()
-            # Approximate timestamp mapping would go here, we just use the current time 
-            # or could track start of stream. We'll just set ts=0.0 as it's a stream chunk.
             chunk = ChunkIngest(
                 text=text,
                 topic_node="live_speech",
