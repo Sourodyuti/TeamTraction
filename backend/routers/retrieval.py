@@ -32,6 +32,7 @@ from services.offline_cache import get_cached_analogy
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/retrieval", tags=["retrieval"])
 
+AUDIO_CACHE: dict[str, bytes] = {}
 
 async def run_retrieval_pipeline(
     concept_node: str,
@@ -95,9 +96,18 @@ async def run_retrieval_pipeline(
     try:
         from services.elevenlabs_client import ElevenLabsClient
         tts = ElevenLabsClient()
-        # Generate audio and get a URL the frontend can fetch
-        audio_url = tts.get_audio_url(analogy_text)
-        logger.debug("ElevenLabs TTS: audio_url=%s", audio_url[:50] if audio_url else "None")
+        # Generate audio and get latency
+        import uuid
+        import base64
+        audio_bytes, tts_ms = tts.text_to_speech(analogy_text)
+        latency["elevenlabs"] = tts_ms
+        if audio_bytes:
+            job_id = str(uuid.uuid4())
+            AUDIO_CACHE[job_id] = audio_bytes
+            # Use base64 for now as per instructions
+            encoded = base64.b64encode(audio_bytes).decode("utf-8")
+            audio_url = f"data:audio/mpeg;base64,{encoded}"
+        logger.debug("ElevenLabs TTS: latency=%.1fms", tts_ms)
     except Exception as e:
         # Non-fatal: return text only, no audio
         logger.warning("ElevenLabs TTS failed (non-fatal, text-only): %s", e)
@@ -183,6 +193,14 @@ async def accio_cached(
         )
 
     return Response(content=audio_bytes, media_type="audio/mpeg")
+
+
+@router.get("/audio/{job_id}")
+async def get_audio(job_id: str) -> Response:
+    """Serve pre-generated audio bytes."""
+    if job_id not in AUDIO_CACHE:
+        raise HTTPException(status_code=404, detail="Audio not found or expired")
+    return Response(content=AUDIO_CACHE[job_id], media_type="audio/mpeg")
 
 
 @router.get("/health")

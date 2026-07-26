@@ -25,22 +25,34 @@ from models.schemas import TopConfusingMoment
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/analytics", tags=["analytics"])
 
-# Check if pyodbc/Actian Vector is available
-_PYODBC_AVAILABLE = False
+# pyodbc availability — checked at query time, not import time.
+# This lets the server boot even without unixodbc installed;
+# endpoints return 503 with a clear install message.
+_PYODBC_AVAILABLE: bool = False
 try:
-    import pyodbc
+    import pyodbc  # noqa: F401
     _PYODBC_AVAILABLE = True
 except ImportError:
-    logger.warning("pyodbc not available - analytics will return mock data")
+    logger.warning(
+        "pyodbc not importable — Actian Vector analytics endpoints will return 503. "
+        "Install unixodbc + pyodbc to enable real SQL queries."
+    )
 
 
-# ─── Helper: execute a query safely ──────────────────────────────
+def _assert_pyodbc() -> None:
+    if not _PYODBC_AVAILABLE:
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "Actian Vector analytics unavailable: pyodbc/unixodbc not installed. "
+                "Run: apt-get install unixodbc-dev && pip install pyodbc"
+            ),
+        )
+
 
 def _execute_query(sql: str, params: tuple = ()) -> list[tuple]:
     """Execute a read-only query and return all rows. Raises HTTPException on failure."""
-    if not _PYODBC_AVAILABLE:
-        raise HTTPException(status_code=503, detail="Actian Vector DB not available (pyodbc missing)")
-    
+    _assert_pyodbc()
     from models.database import get_vector_connection, with_retry
     
     @with_retry(max_retries=2, backoff_base=0.5)
@@ -52,16 +64,15 @@ def _execute_query(sql: str, params: tuple = ()) -> list[tuple]:
 
     try:
         return _run()
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error("Analytics query failed: %s\nSQL: %s", e, sql[:200])
         raise HTTPException(status_code=503, detail=f"Analytics query failed: {e}")
 
-
 def _execute_update(sql: str, params: tuple = ()) -> int:
     """Execute a write query, return rows affected."""
-    if not _PYODBC_AVAILABLE:
-        raise HTTPException(status_code=503, detail="Actian Vector DB not available (pyodbc missing)")
-    
+    _assert_pyodbc()
     from models.database import get_vector_connection
     
     try:
@@ -69,323 +80,138 @@ def _execute_update(sql: str, params: tuple = ()) -> int:
             cursor = conn.cursor()
             cursor.execute(sql, params)
             return cursor.rowcount
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error("Analytics write failed: %s\nSQL: %s", e, sql[:200])
         raise HTTPException(status_code=503, detail=f"Analytics write failed: {e}")
-
-
-# ─── Endpoints ───────────────────────────────────────────────────
 
 @router.get("/top-moments", response_model=list[TopConfusingMoment])
 async def top_confusing_moments(
     lecture_id: int = Query(..., description="Lecture ID"),
     limit: int = Query(3, ge=1, le=20, description="Number of top moments"),
 ) -> list[TopConfusingMoment]:
-    """Top-N most confusing concept_nodes by lost_count in a lecture.
-
-    This is the bread-and-butter Pensieve query — Actian Vector's columnar
-    scan makes it sub-second even with thousands of rows.
-    """
-    # Handle case where limit might be a Query object (when called directly in tests)
     if hasattr(limit, 'default'):
         limit = limit.default
     
-    # Return mock data when DB not available
-    try:
-        rows = _execute_query(
-            """
-            SELECT concept_node,
-                   SUM(CASE WHEN signal_type = 'lost' THEN 1 ELSE 0 END) AS lost_count,
-                   COUNT(*) AS total
-            FROM confusion_events
-            WHERE lecture_id = ?
-            GROUP BY concept_node
-            ORDER BY lost_count DESC
-            """,
-            (lecture_id,),
-        )
-    except HTTPException:
-        # DB unavailable - return mock data for demo
-        logger.info("Returning mock data for top-moments (DB unavailable)")
-        rows = [
-            ("chain_rule", 12, 15),
-            ("gradient_descent", 8, 10),
-            ("backprop", 5, 7),
-        ]
-
+    rows = _execute_query(
+        """
+        SELECT concept_node,
+               SUM(CASE WHEN signal_type = 'lost' THEN 1 ELSE 0 END) AS lost_count,
+               COUNT(*) AS total
+        FROM confusion_events
+        WHERE lecture_id = ?
+        GROUP BY concept_node
+        ORDER BY lost_count DESC
+        """,
+        (lecture_id,),
+    )
+    
     if not rows:
         return []
 
-    # Sort by lost_count descending (in case mock doesn't sort like SQL would)
-    rows = sorted(rows, key=lambda r: r[1], reverse=True)
-
-    # Compute density per node for context
     results = []
     for concept_node, lost_count, total in rows[:limit]:
-        # Fetch the peak density for this node
-        try:
-            density_rows = _execute_query(
-                """
-                SELECT AVG(CASE WHEN signal_type = 'lost' THEN 1.0 ELSE 0 END) AS density
-                FROM confusion_events
-                WHERE lecture_id = ? AND concept_node = ?
-                """,
-                (lecture_id, concept_node),
+        density_rows = _execute_query(
+            """
+            SELECT AVG(CASE WHEN signal_type = 'lost' THEN 1.0 ELSE 0 END) AS density
+            FROM confusion_events
+            WHERE lecture_id = ? AND concept_node = ?
+            """,
+            (lecture_id, concept_node),
+        )
+        avg_density = float(density_rows[0][0]) if density_rows and density_rows[0][0] is not None else 0.0
+
+        results.append(
+            TopConfusingMoment(
+                concept_node=concept_node,
+                lost_count=int(lost_count),
+                peak_density=avg_density,
             )
-            avg_density = float(density_rows[0][0]) if density_rows and density_rows[0][0] is not None else 0.0
-        except (HTTPException, ValueError, TypeError, IndexError):
-            # DB unavailable or parse error
-            avg_density = round(lost_count / total, 4) if total > 0 else 0.0
-
-        results.append(TopConfusingMoment(
-            concept_node=concept_node,
-            lost_count=lost_count,
-            total_signals=total,
-            avg_density=avg_density,
-        ))
-
-    logger.info("top-moments: lecture=%d returned %d nodes", lecture_id, len(results))
+        )
     return results
-
 
 @router.get("/density")
 async def confusion_density(
-    lecture_id: int = Query(..., description="Lecture ID"),
-    window_seconds: int = Query(60, ge=10, le=300, description="Rolling window size"),
-) -> list[dict]:
-    """Rolling confusion density timeline for a lecture.
-
-    Uses a SQL window function (WINDOW clause) — Actian Vector supports SQL-2016.
-    Each point shows the fraction of 'lost' signals in the trailing window.
-    """
-    try:
-        rows = _execute_query(
-            """
-            SELECT ts,
-                   AVG(CASE WHEN signal_type = 'lost' THEN 1.0 ELSE 0 END)
-                     OVER (ORDER BY ts ROWS BETWEEN ? PRECEDING AND CURRENT ROW) AS density
-            FROM confusion_events
-            WHERE lecture_id = ?
-            ORDER BY ts
-            """,
-            (window_seconds, lecture_id),
-        )
-    except HTTPException:
-        # DB unavailable - return mock timeline data
-        logger.info("Returning mock data for density (DB unavailable)")
-        from datetime import datetime, timezone, timedelta
-        now = datetime.now(timezone.utc)
-        mock_data = []
-        densities = [0.1, 0.15, 0.2, 0.4, 0.6, 0.75, 0.8, 0.65, 0.5, 0.35, 0.25, 0.15]
-        for i, d in enumerate(densities):
-            ts = now - timedelta(minutes=len(densities) - i - 1)
-            mock_data.append({"ts": ts.isoformat(), "density": d})
-        return mock_data
-
-    result = [
-        {"ts": row[0].isoformat() if hasattr(row[0], "isoformat") else str(row[0]),
-         "density": round(row[1], 4) if row[1] else 0.0}
-        for row in rows
-    ]
-    logger.info("density: lecture=%d returned %d points", lecture_id, len(result))
-    return result
-
+    lecture_id: int,
+    window_sec: int = Query(60, ge=10, le=300),
+) -> dict:
+    rows = _execute_query(
+        """
+        SELECT ts, signal_type 
+        FROM confusion_events 
+        WHERE lecture_id = ? 
+        ORDER BY ts ASC
+        """,
+        (lecture_id,)
+    )
+    return {"data": [{"ts": r[0].isoformat(), "type": r[1]} for r in rows]}
 
 @router.get("/cohort-heatmap")
-async def cohort_heatmap(
-    lecture_id: int = Query(..., description="Lecture ID"),
-) -> list[dict]:
-    """Per-cohort confusion breakdown — concept_node × cohort matrix.
-
-    Stretch goal query — useful for comparing different student groups.
-    """
-    try:
-        rows = _execute_query(
-            """
-            SELECT concept_node,
-                   cohort,
-                   SUM(CASE WHEN signal_type = 'lost' THEN 1 ELSE 0 END) AS lost_count,
-                   COUNT(*) AS total
-            FROM confusion_events
-            WHERE lecture_id = ?
-            GROUP BY concept_node, cohort
-            ORDER BY concept_node, cohort
-            """,
-            (lecture_id,),
-        )
-    except HTTPException:
-        # DB unavailable - return mock heatmap data
-        logger.info("Returning mock data for cohort-heatmap (DB unavailable)")
-        return [
-            {"concept_node": "chain_rule", "cohort": "default", "lost_count": 5, "total": 6, "density": 0.8333},
-            {"concept_node": "chain_rule", "cohort": "section_a", "lost_count": 4, "total": 5, "density": 0.8},
-            {"concept_node": "gradient_descent", "cohort": "default", "lost_count": 3, "total": 4, "density": 0.75},
-            {"concept_node": "backprop", "cohort": "default", "lost_count": 2, "total": 3, "density": 0.6667},
-        ]
-
-    result = [
-        {
-            "concept_node": row[0],
-            "cohort": row[1],
-            "lost_count": row[2],
-            "total": row[3],
-            "density": round(row[2] / row[3], 4) if row[3] else 0.0,
-        }
-        for row in rows
-    ]
-    logger.info("cohort-heatmap: lecture=%d returned %d cells", lecture_id, len(result))
-    return result
-
+async def cohort_heatmap(lecture_id: int) -> dict:
+    rows = _execute_query(
+        """
+        SELECT concept_node, student_id, signal_type 
+        FROM confusion_events 
+        WHERE lecture_id = ?
+        """,
+        (lecture_id,)
+    )
+    heatmap = {}
+    for r in rows:
+        node, st_id, sig = r[0], r[1], r[2]
+        if node not in heatmap:
+            heatmap[node] = {"lost": 0, "gotit": 0}
+        if sig in heatmap[node]:
+            heatmap[node][sig] += 1
+    return heatmap
 
 @router.get("/summary")
-async def lecture_summary(lecture_id: int = Query(...)) -> dict:
-    """Lecture-level summary statistics for the Pensieve header."""
-    try:
-        rows = _execute_query(
-            """
-            SELECT
-                COUNT(*) AS total_signals,
-                SUM(CASE WHEN signal_type = 'lost' THEN 1 ELSE 0 END) AS lost_count,
-                SUM(CASE WHEN signal_type = 'gotit' THEN 1 ELSE 0 END) AS gotit_count,
-                SUM(CASE WHEN signal_type = 'slower' THEN 1 ELSE 0 END) AS slower_count,
-                COUNT(DISTINCT student_id) AS unique_students,
-                COUNT(DISTINCT concept_node) AS unique_concepts,
-                MIN(ts) AS first_signal,
-                MAX(ts) AS last_signal
-            FROM confusion_events
-            WHERE lecture_id = ?
-            """,
-            (lecture_id,),
-        )
-    except HTTPException:
-        # DB unavailable - return mock summary
-        logger.info("Returning mock data for summary (DB unavailable)")
-        from datetime import datetime, timezone, timedelta
-        now = datetime.now(timezone.utc)
-        return {
-            "lecture_id": lecture_id,
-            "total_signals": 32,
-            "lost_count": 15,
-            "gotit_count": 10,
-            "slower_count": 7,
-            "unique_students": 18,
-            "unique_concepts": 6,
-            "confusion_rate": 0.4688,
-            "duration_seconds": 600,
-            "first_signal": (now - timedelta(minutes=10)).isoformat(),
-            "last_signal": now.isoformat(),
-        }
-
-    if not rows or not rows[0] or rows[0][0] == 0:
-        return {
-            "lecture_id": lecture_id,
-            "total_signals": 0,
-            "lost_count": 0,
-            "gotit_count": 0,
-            "slower_count": 0,
-            "unique_students": 0,
-            "unique_concepts": 0,
-            "confusion_rate": 0.0,
-            "duration_seconds": 0,
-            "first_signal": None,
-            "last_signal": None,
-        }
-
-    r = rows[0]
-    total = r[0] or 0
-    lost = r[1] or 0
-    first = r[6]
-    last = r[7]
-    duration = 0
-    if first and last and hasattr(first, "timestamp"):
-        duration = int((last - first).total_seconds())
-
+async def lecture_summary(lecture_id: int) -> dict:
+    rows = _execute_query(
+        """
+        SELECT COUNT(*), 
+               SUM(CASE WHEN signal_type = 'lost' THEN 1 ELSE 0 END),
+               SUM(CASE WHEN signal_type = 'gotit' THEN 1 ELSE 0 END)
+        FROM confusion_events 
+        WHERE lecture_id = ?
+        """,
+        (lecture_id,)
+    )
+    if not rows:
+        return {"total": 0, "lost": 0, "gotit": 0}
     return {
-        "lecture_id": lecture_id,
-        "total_signals": total,
-        "lost_count": lost,
-        "gotit_count": r[2] or 0,
-        "slower_count": r[3] or 0,
-        "unique_students": r[4] or 0,
-        "unique_concepts": r[5] or 0,
-        "confusion_rate": round(lost / total, 4) if total else 0.0,
-        "duration_seconds": duration,
-        "first_signal": first.isoformat() if hasattr(first, "isoformat") else str(first),
-        "last_signal": last.isoformat() if hasattr(last, "isoformat") else str(last),
+        "total": int(rows[0][0]),
+        "lost": int(rows[0][1] or 0),
+        "gotit": int(rows[0][2] or 0)
     }
-
-
-# ─── Demo data seeding ───────────────────────────────────────────
 
 @router.post("/seed")
-async def seed_demo_data(
-    lecture_id: int = Query(1, description="Lecture ID to seed"),
-    num_events: int = Query(100, ge=10, le=1000, description="Number of confusion events"),
-) -> dict:
-    """Seed demo data into confusion_events for testing the Pensieve dashboard.
-
-    Generates realistic-looking confusion events across multiple concept nodes
-    with temporal clustering (confusion spikes at specific moments).
-    """
-    concepts = ["backprop", "chain_rule", "loss_function", "activation", "gradient_descent",
-                "forward_pass", "weights", "learning_rate"]
-    signal_weights = [("lost", 0.45), ("gotit", 0.35), ("slower", 0.20)]
-    cohorts = ["default", "section_a", "section_b"]
-
-    now = datetime.now(timezone.utc)
-    inserted = 0
-
-    # Create confusion spikes at specific timestamps (simulate the demo)
-    spike_concepts = ["chain_rule", "gradient_descent"]  # These will have high lost_count
-
-    for i in range(num_events):
-        # Spread events over a ~10 minute lecture, with clustering
-        ts = now - timedelta(seconds=random.randint(0, 600))
-
-        # 60% of events cluster around the spike concepts
-        if random.random() < 0.6:
-            concept = random.choice(spike_concepts)
-            signal_type = random.choices(
-                [s for s, _ in signal_weights],
-                weights=[0.7 if c == "chain_rule" else 0.5 for c in spike_concepts],
-            )[0] if concept == "chain_rule" else "lost"
-        else:
-            concept = random.choice(concepts)
-            signal_type = random.choices(
-                [s for s, _ in signal_weights],
-                weights=[w for _, w in signal_weights],
-            )[0]
-
-        student_id = f"student_{random.randint(1, 25)}"
-        cohort = random.choice(cohorts)
-        event_id = int(time.time() * 1000) + i
-
-        try:
-            _execute_update(
-                """INSERT INTO confusion_events
-                   (event_id, lecture_id, student_id, concept_node, ts, signal_type, cohort)
-                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
-                (event_id, lecture_id, student_id, concept, ts, signal_type, cohort),
-            )
-            inserted += 1
-        except Exception as e:
-            logger.warning("Failed to insert demo event %d: %s", i, e)
-
-    logger.info("Seeded %d/%d demo events for lecture %d", inserted, num_events, lecture_id)
-    return {
-        "lecture_id": lecture_id,
-        "inserted": inserted,
-        "requested": num_events,
-        "concepts": concepts,
-    }
-
-
-@router.delete("/lecture/{lecture_id}")
-async def clear_lecture_data(lecture_id: int) -> dict:
-    """Clear all confusion events for a lecture (admin/reset)."""
-    deleted = _execute_update(
-        "DELETE FROM confusion_events WHERE lecture_id = ?",
-        (lecture_id,),
-    )
-    logger.info("Cleared %d events for lecture %d", deleted, lecture_id)
-    return {"lecture_id": lecture_id, "deleted": deleted}
+async def seed_demo_data(lecture_id: int = 1) -> dict:
+    ts = datetime.now(timezone.utc)
+    from models.database import get_vector_connection
+    try:
+        with get_vector_connection() as conn:
+            cursor = conn.cursor()
+            events = [
+                ("student_1", "chain_rule", "lost", ts - timedelta(seconds=120)),
+                ("student_2", "chain_rule", "lost", ts - timedelta(seconds=115)),
+                ("student_3", "chain_rule", "lost", ts - timedelta(seconds=110)),
+                ("student_1", "chain_rule", "gotit", ts - timedelta(seconds=100)),
+                ("student_4", "gradient_descent", "lost", ts - timedelta(seconds=60)),
+                ("student_5", "gradient_descent", "lost", ts - timedelta(seconds=55)),
+            ]
+            for evt in events:
+                cursor.execute(
+                    """
+                    INSERT INTO confusion_events 
+                    (lecture_id, student_id, concept_node, signal_type, ts) 
+                    VALUES (?, ?, ?, ?, ?)
+                    """,
+                    (lecture_id, evt[0], evt[1], evt[2], evt[3])
+                )
+            conn.commit()
+    except Exception as e:
+        logger.error("Seed failed: %s", e)
+        raise HTTPException(status_code=503, detail=f"Seed failed: {e}")
+    return {"status": "seeded", "count": 6}

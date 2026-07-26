@@ -86,3 +86,16 @@ class ElevenLabsClient:
         except Exception as e:
             logger.error("ElevenLabs TTS failed: %s — returning empty audio", e)
             return b"", 0.0
+
+    def synthesize(self, text: str) -> tuple[bytes, float]:
+        """Alias for text_to_speech."""
+        return self.text_to_speech(text)
+
+    def get_audio_url(self, text: str) -> str | None:
+        """Get base64 audio data URI."""
+        import base64
+        audio_bytes, _ = self.text_to_speech(text)
+        if not audio_bytes:
+            return None
+        encoded = base64.b64encode(audio_bytes).decode("utf-8")
+        return f"data:audio/mpeg;base64,{encoded}"

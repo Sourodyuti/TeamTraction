@@ -44,6 +44,15 @@ class Settings(BaseSettings):
         "http://127.0.0.1:3000",
     ]
 
+    # ─── MongoDB (user auth) ──────────────────────────────────────
+    mongodb_uri: str = ""
+    mongodb_db_name: str = "legilimens"
+
+    # ─── JWT ──────────────────────────────────────────────────────
+    jwt_secret: str = "legilimens-default-dev-secret-change-in-prod"
+    jwt_algorithm: str = "HS256"
+    jwt_access_expire_minutes: int = 60 * 24 * 7  # 7 days
+
 
 @lru_cache
 def get_settings() -> Settings:

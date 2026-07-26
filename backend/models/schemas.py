@@ -100,3 +100,13 @@ class AnalogyResponse(BaseModel):
     avatar: InterestAvatar
     latency_ms: dict          # {"embedding": X, "retrieval": Y, "gemini": Z, "elevenlabs": W}
     audio_url: Optional[str] = None  # TTS audio URL (None if ElevenLabs unavailable)
+
+class RecordingChunk(BaseModel):
+    chunk_id: str
+    lecture_id: int
+    start_ts: float
+    end_ts: float
+    transcript: str
+    file_path: str
+    indexed: bool = False
+    created_at: datetime

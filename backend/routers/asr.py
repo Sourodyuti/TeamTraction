@@ -190,8 +190,20 @@ async def ingest_chunk(chunk: ChunkIngest, background_tasks: BackgroundTasks) ->
         logger.error("Failed to store chunk: %s", e)
         raise HTTPException(status_code=503, detail=f"Failed to store chunk: {e}")
 
-    # 2. Schedule embedding + upsert (async — doesn't block the response)
-    background_tasks.add_task(_embed_and_upsert, chunk, chunk_id)
+    # 2. Call KnowledgeBase to embed and upsert synchronously
+    try:
+        from services.knowledge_base import get_knowledge_base
+        kb = get_knowledge_base()
+        kb.index_chunk(
+            lecture_id=chunk.lecture_id,
+            chunk_id=chunk_id,
+            text=chunk.text,
+            ts=chunk.ts,
+            topic_node=chunk.topic_node,
+            difficulty=chunk.difficulty
+        )
+    except Exception as e:
+        logger.error("Failed to index chunk in KB: %s", e)
 
     # 3. Broadcast to dashboards
     background_tasks.add_task(_broadcast_chunk_update, chunk.lecture_id, chunk_id, chunk.topic_node)
@@ -275,28 +287,22 @@ async def get_current_chunk(lecture_id: int) -> dict:
 
 @router.get("/lectures/{lecture_id}/chunks")
 async def list_chunks(lecture_id: int, limit: int = Query(50, ge=1, le=500)) -> list[dict]:
-    """List recent chunks for a lecture (from VectorAI DB, not current_chunk)."""
-    # This would query VectorAI DB for all chunks of a lecture.
-    # For now, return current_chunk history if available.
-    # TODO: query VectorAI DB with payload filter lecture_id
+    """List recent chunks for a lecture from KnowledgeBase."""
     try:
-        with get_vector_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute(
-                "SELECT chunk_id, topic_node, text_preview, ts FROM current_chunk "
-                "WHERE lecture_id = ? ORDER BY ts DESC",
-                (lecture_id,),
-            )
-            rows = cursor.fetchall()
-            return [
-                {
-                    "chunk_id": r[0],
-                    "topic_node": r[1],
-                    "text_preview": r[2],
-                    "ts": r[3].isoformat() if hasattr(r[3], "isoformat") else str(r[3]),
-                }
-                for r in rows[:limit]
-            ]
+        from services.knowledge_base import get_knowledge_base
+        kb = get_knowledge_base()
+        chunks = kb._index.get(lecture_id, [])
+        
+        # Return most recent first
+        return [
+            {
+                "chunk_id": c["chunk_id"],
+                "topic_node": c["topic_node"],
+                "text_preview": c["text_preview"],
+                "ts": c["ts"],
+            }
+            for c in reversed(chunks[-limit:])
+        ]
     except Exception as e:
         logger.error("Failed to list chunks: %s", e)
         raise HTTPException(status_code=503, detail=f"Failed: {e}")

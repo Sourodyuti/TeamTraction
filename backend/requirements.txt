@@ -27,3 +27,12 @@ pytest>=8.0
 httpx                         # Async test client for FastAPI
 mypy
 ruff
+faster-whisper
+aiofiles
+
+# Authentication (MongoDB + JWT + bcrypt)
+motor>=3.0               # Async MongoDB driver
+python-jose[cryptography]  # JWT signing/verification
+passlib[bcrypt]           # Password hashing
+python-multipart          # Form data parsing (OAuth2 form)
+

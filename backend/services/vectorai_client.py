@@ -124,20 +124,40 @@ class VectorAIClient:
         logger.info("Upserted %d points into '%s'", len(actian_points), COLLECTION_NAME)
 
     def search_similar(
-        self, query_vector: list[float], limit: int = 3
+        self, query_vector: list[float], limit: int = 3, filter: dict | None = None
     ) -> list[dict]:
         """Semantic similarity search for the best past explanation.
 
         Returns list of {"id": ..., "payload": {...}, "score": float}.
         """
         client = self._get_client()
+        
+        kwargs = {
+            "collection_name": COLLECTION_NAME,
+            "query": query_vector,
+            "limit": limit,
+            "with_payload": True,
+        }
+        
+        if filter:
+            from actian.vectorai.models.filter import Filter, FieldCondition, MatchValue
+            conditions = []
+            for k, v in filter.items():
+                conditions.append(FieldCondition(key=k, match=MatchValue(value=v)))
+            kwargs["query_filter"] = Filter(must=conditions)
+        
+        try:
+            hits = client.query_points(**kwargs)
+        except Exception:
+            # If actian SDK imports or Filter construct differ, fallback to filtering post-search
+            # Just grab more points and filter in-memory if query_filter fails
+            kwargs.pop("query_filter", None)
+            kwargs["limit"] = limit * 5
+            hits = client.query_points(**kwargs)
+            filtered_points = [p for p in hits.points if p.payload and all(p.payload.get(k) == v for k, v in filter.items())] if filter else hits.points
+            hits.points = filtered_points[:limit]
 
-        hits = client.query_points(
-            collection_name=COLLECTION_NAME,
-            query=query_vector,
-            limit=limit,
-            with_payload=True,
-        )
+
 
         results = []
         for hit in hits.points:
