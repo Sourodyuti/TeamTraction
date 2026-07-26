@@ -30,7 +30,10 @@ class FrameAnalysisRequest(BaseModel):
 
 class FrameAnalysisResponse(BaseModel):
     topic_node: str
-    slide_text_summary: str
+    comprehensive_summary: str
+    brief_summary: str
+    full_text_transcription: str
+    diagram_descriptions: str
     difficulty: int
     key_terms: list[str]
     latency_ms: float
@@ -46,7 +49,10 @@ class FrameIndexRequest(BaseModel):
 
 class FrameIndexResponse(BaseModel):
     topic_node: str
-    slide_text_summary: str
+    comprehensive_summary: str
+    brief_summary: str
+    full_text_transcription: str
+    diagram_descriptions: str
     difficulty: int
     key_terms: list[str]
     latency_ms: float
@@ -70,7 +76,10 @@ async def analyze_frame(req: FrameAnalysisRequest) -> FrameAnalysisResponse:
 
     return FrameAnalysisResponse(
         topic_node=context.get("topic_node", "unknown"),
-        slide_text_summary=context.get("slide_text_summary", ""),
+        comprehensive_summary=context.get("comprehensive_summary", ""),
+        brief_summary=context.get("brief_summary", ""),
+        full_text_transcription=context.get("full_text_transcription", ""),
+        diagram_descriptions=context.get("diagram_descriptions", ""),
         difficulty=context.get("difficulty", 5),
         key_terms=context.get("key_terms", []),
         latency_ms=latency_ms,
@@ -81,15 +90,15 @@ async def analyze_frame(req: FrameAnalysisRequest) -> FrameAnalysisResponse:
 async def analyze_and_index(req: FrameIndexRequest) -> FrameIndexResponse:
     """Analyze a screen frame with Gemini Vision and index the result into VectorAI DB.
 
-    The chunk text stored in the DB is:
-        "[topic_node] {slide_text_summary}. Key terms: {key_terms joined}"
+    The chunk text stored in the DB is rich and comprehensive, including:
+        Transcription, diagrams, and summary.
 
     This gives the retrieval pipeline rich semantic context from the slide
     so confusion signals can be matched against what was on screen.
 
     Skips indexing (but still returns analysis) if:
     - topic_node == "unknown"  (Gemini couldn't parse the slide)
-    - slide_text_summary is empty
+    - comprehensive_summary is empty
     """
     vision = get_gemini_vision()
     if not vision or not vision.available:
@@ -104,29 +113,30 @@ async def analyze_and_index(req: FrameIndexRequest) -> FrameIndexResponse:
     context, latency_ms = vision.analyze_frame(image_bytes, req.mime_type)
 
     topic_node = context.get("topic_node", "unknown")
-    slide_text = context.get("slide_text_summary", "").strip()
+    comprehensive_summary = context.get("comprehensive_summary", "")
+    brief_summary = context.get("brief_summary", "")
+    full_text = context.get("full_text_transcription", "")
+    diagrams = context.get("diagram_descriptions", "")
     difficulty = context.get("difficulty", 5)
     key_terms: list[str] = context.get("key_terms", [])
 
     # 2. Build rich chunk text
-    chunk_text_parts = []
-    if slide_text:
-        chunk_text_parts.append(slide_text)
-    if key_terms:
-        chunk_text_parts.append("Key terms: " + ", ".join(key_terms))
-    chunk_text = f"[{topic_node}] " + ". ".join(chunk_text_parts) if chunk_text_parts else ""
+    chunk_text = f"Transcription: {full_text}\nDiagrams: {diagrams}\nSummary: {comprehensive_summary}"
 
     # 3. Skip indexing if nothing useful was detected
-    if topic_node == "unknown" or not chunk_text.strip():
-        logger.info("Vision frame skipped indexing: topic=unknown or empty text (lecture=%d)", req.lecture_id)
+    if topic_node == "unknown" or not comprehensive_summary:
+        logger.info("Vision frame skipped indexing: topic=unknown or empty summary (lecture=%d)", req.lecture_id)
         return FrameIndexResponse(
             topic_node=topic_node,
-            slide_text_summary=slide_text,
+            comprehensive_summary=comprehensive_summary,
+            brief_summary=brief_summary,
+            full_text_transcription=full_text,
+            diagram_descriptions=diagrams,
             difficulty=difficulty,
             key_terms=key_terms,
             latency_ms=latency_ms,
             indexed=False,
-            index_skipped_reason="topic_node=unknown or slide_text empty — nothing useful to index",
+            index_skipped_reason="topic_node=unknown or comprehensive_summary empty — nothing useful to index",
         )
 
     # 4. Index into VectorAI DB via KnowledgeBase
@@ -162,7 +172,10 @@ async def analyze_and_index(req: FrameIndexRequest) -> FrameIndexResponse:
 
     return FrameIndexResponse(
         topic_node=topic_node,
-        slide_text_summary=slide_text,
+        comprehensive_summary=comprehensive_summary,
+        brief_summary=brief_summary,
+        full_text_transcription=full_text,
+        diagram_descriptions=diagrams,
         difficulty=difficulty,
         key_terms=key_terms,
         latency_ms=latency_ms,

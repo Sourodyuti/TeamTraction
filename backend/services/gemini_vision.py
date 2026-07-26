@@ -17,19 +17,22 @@ logger = logging.getLogger(__name__)
 
 _gemini_vision_client: "GeminiVisionClient | None" = None
 
-_CONTEXT_PROMPT = """You are analyzing a lecture slide shown to students.
-Identify the main concept or topic being discussed.
+_CONTEXT_PROMPT = """You are analyzing a screen capture or image.
+Identify the main concept, topic, or activity being shown.
 
-Respond in this JSON format only:
+Respond STRICTLY with a valid JSON object matching this exact format and nothing else. Do not use markdown wrappers:
 {
   "topic_node": "snake_case_topic_name",
-  "slide_text_summary": "brief summary of slide content",
+  "full_text_transcription": "Exact transcription of all text, numbers, code, and values visible on the screen",
+  "diagram_descriptions": "Detailed explanation of any diagrams, charts, UI elements, or visual structures (or 'None')",
+  "comprehensive_summary": "Full comprehensive and detailed summary of the visual and text content",
+  "brief_summary": "A small 2-line summary of the content",
   "difficulty": 1-10,
-  "key_terms": ["term1", "term2", ...]
+  "key_terms": ["term1", "term2"]
 }
 
 If you cannot determine the topic, respond with:
-{"topic_node": "unknown", "slide_text_summary": "", "difficulty": 5, "key_terms": []}
+{"topic_node": "unknown", "full_text_transcription": "", "diagram_descriptions": "", "comprehensive_summary": "Could not determine context.", "brief_summary": "", "difficulty": 5, "key_terms": []}
 """
 
 
@@ -66,7 +69,7 @@ class GeminiVisionClient:
         image_bytes: bytes,
         mime_type: str = "image/png",
     ) -> tuple[dict[str, Any], float]:
-        _UNKNOWN = {"topic_node": "unknown", "slide_text_summary": "", "difficulty": 5, "key_terms": []}
+        _UNKNOWN = {"topic_node": "unknown", "full_text_transcription": "", "diagram_descriptions": "", "comprehensive_summary": "Could not determine context.", "brief_summary": "", "difficulty": 5, "key_terms": []}
 
         if not self.available:
             logger.warning("Gemini Vision unavailable — attempting Nvidia fallback")
@@ -146,7 +149,7 @@ class GeminiVisionClient:
         """Fallback to Nvidia NIM Vision model with EXIF rotation and OCR."""
         start = time.perf_counter()
         api_key = settings.nvidia_api_key
-        _UNKNOWN = {"topic_node": "unknown", "slide_text_summary": "", "difficulty": 5, "key_terms": []}
+        _UNKNOWN = {"topic_node": "unknown", "full_text_transcription": "", "diagram_descriptions": "", "comprehensive_summary": "Could not determine context.", "brief_summary": "", "difficulty": 5, "key_terms": []}
 
         if not api_key:
             logger.warning("NVIDIA_API_KEY not set for fallback")

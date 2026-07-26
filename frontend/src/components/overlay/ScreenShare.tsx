@@ -6,7 +6,7 @@ import styles from "./ScreenShare.module.css";
 
 interface ScreenShareProps {
   onStreamReady?: (stream: MediaStream) => void;
-  onContextDetected?: (context: { topic_node: string; slide_text_summary: string; key_terms: string[] }) => void;
+  onContextDetected?: (context: { topic_node: string; comprehensive_summary: string; key_terms: string[] }) => void;
 }
 
 export function ScreenShare({ onStreamReady, onContextDetected }: ScreenShareProps) {

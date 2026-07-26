@@ -59,7 +59,10 @@ export const api = {
     mime_type: string = "image/jpeg"
   ): Promise<{
     topic_node: string;
-    slide_text_summary: string;
+    comprehensive_summary: string;
+    brief_summary: string;
+    full_text_transcription: string;
+    diagram_descriptions: string;
     difficulty: number;
     key_terms: string[];
     latency_ms: number;

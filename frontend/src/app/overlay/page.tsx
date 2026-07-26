@@ -229,7 +229,7 @@ export default function OverlayPage() {
       const ctx = await resp.json();
       if (ctx.topic_node && ctx.topic_node !== "unknown") {
         setCurrentTopic(ctx.topic_node);
-        setSlideText(ctx.slide_text_summary || null);
+        setSlideText(ctx.comprehensive_summary || null);
         setKeyTerms(ctx.key_terms || []);
         setLastLatency(Math.round(elapsed));
       }
@@ -283,7 +283,8 @@ export default function OverlayPage() {
           const data = await resp.json();
           setAskResponse(
             `**Topic:** ${data.topic_node}\n\n` +
-            `**Summary:** ${data.slide_text_summary}\n\n` +
+            `**Summary:** ${data.comprehensive_summary}\n\n` +
+            `**Brief:** ${data.brief_summary}\n\n` +
             `**Key Terms:** ${(data.key_terms || []).join(", ")}` +
             (data.indexed ? `\n\n✅ Indexed as chunk \`${data.chunk_id}\`` : "")
           );

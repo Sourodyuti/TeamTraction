@@ -16,7 +16,10 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 export function useScreenCapture(
   onContextDetected?: (context: {
     topic_node: string;
-    slide_text_summary: string;
+    comprehensive_summary: string;
+    brief_summary: string;
+    full_text_transcription: string;
+    diagram_descriptions: string;
     key_terms: string[];
     indexed?: boolean;
     chunk_id?: string;
