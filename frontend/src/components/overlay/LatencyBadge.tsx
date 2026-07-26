@@ -51,11 +51,11 @@ export function LatencyBadge({ badge, autoDismissMs = 8000 }: Props) {
 
   if (!badge || !visible) return null;
 
-  const stages = Object.entries(STAGE_LABELS).map(([key, label]) => ({
+  const stages = (["embedding_ms", "retrieval_ms", "gemini_ms", "elevenlabs_ms"] as const).map((key) => ({
     key,
-    label,
-    ms: (badge as unknown as Record<string, unknown>)[key] as number ?? 0,
-    color: STAGE_COLORS[key],
+    label: STAGE_LABELS[key] || key,
+    ms: badge[key] ?? 0,
+    color: STAGE_COLORS[key] || "#666",
   }));
 
   return (
