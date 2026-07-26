@@ -12,6 +12,8 @@ export function useRadarData(lectureId: number = 1) {
   const [confusionAlert, setConfusionAlert] = useState<{ concept_node: string; count: number; recommendation: string } | null>(null);
   const [lastAnalogy, setLastAnalogy] = useState<{ concept_node: string; analogy_text: string; audio_url?: string } | null>(null);
   const [currentTopic, setCurrentTopic] = useState<string | null>(null);
+  const [totalStudents, setTotalStudents] = useState<number>(0);
+  const [seenStudents, setSeenStudents] = useState<Set<string>>(new Set());
 
   const { lastMessage } = useWebSocket(lectureId, "teacher");
 
@@ -21,7 +23,16 @@ export function useRadarData(lectureId: number = 1) {
     const msg = lastMessage;
 
     if (msg.type === "radar_update") {
-      const { concept_node, signal_type } = msg;
+      const { concept_node, signal_type, student_id } = msg;
+      
+      if (student_id) {
+        setSeenStudents(prev => {
+          const next = new Set(prev);
+          next.add(student_id);
+          setTotalStudents(next.size);
+          return next;
+        });
+      }
 
       setConceptNodes((prev) => {
         const existing = prev.find((n) => n.id === concept_node);
@@ -94,5 +105,6 @@ export function useRadarData(lectureId: number = 1) {
     confusionAlert,
     lastAnalogy,
     currentTopic,
+    totalStudents,
   };
 }

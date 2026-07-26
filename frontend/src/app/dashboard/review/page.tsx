@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { RecordingChunk } from "@/lib/types";
+import { useRef } from "react";
 
 export default function ReviewPage() {
   const lectureId = 1;
@@ -10,16 +11,25 @@ export default function ReviewPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [highlightedChunks, setHighlightedChunks] = useState<Set<string>>(new Set());
   const [activeChunkId, setActiveChunkId] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const [progress, setProgress] = useState(0);
 
   useEffect(() => {
-    // Mock fetch manifest since we might not have the actual endpoint running
-    // In real app: fetch(`http://localhost:8001/recording/${lectureId}/manifest`)
-    // Mock data for UI presentation
-    setChunks([
-      { chunk_id: "c1", lecture_id: lectureId, start_ts: 0, end_ts: 3000, transcript: "Welcome to the class on algorithms.", topic_node: "Introduction", duration: 3 },
-      { chunk_id: "c2", lecture_id: lectureId, start_ts: 3000, end_ts: 6000, transcript: "Today we will discuss big O notation.", topic_node: "Big_O", duration: 3 },
-      { chunk_id: "c3", lecture_id: lectureId, start_ts: 6000, end_ts: 9000, transcript: "It describes the asymptotic upper bound.", topic_node: "Big_O", duration: 3 },
-    ]);
+    const fetchManifest = async () => {
+      try {
+        const token = localStorage.getItem("legilimens_token");
+        const resp = await fetch(`http://localhost:8001/recording/${lectureId}/manifest`, {
+          headers: token ? { "Authorization": `Bearer ${token}` } : {}
+        });
+        if (!resp.ok) throw new Error("Manifest fetch failed");
+        const data = await resp.json();
+        setChunks(data);
+      } catch (err) {
+        setError("No recordings yet");
+      }
+    };
+    fetchManifest();
   }, [lectureId]);
 
   const handleSearch = async () => {
@@ -27,22 +37,63 @@ export default function ReviewPage() {
       setHighlightedChunks(new Set());
       return;
     }
-    // Mock semantic search highlighting
-    // In real app: POST /retrieval/accio with query
-    const results = new Set<string>();
-    chunks.forEach(c => {
-      if (c.transcript.toLowerCase().includes(searchQuery.toLowerCase()) || 
-          (c.topic_node && c.topic_node.toLowerCase().includes(searchQuery.toLowerCase()))) {
-        results.add(c.chunk_id);
+    try {
+      const token = localStorage.getItem("legilimens_token");
+      const resp = await fetch("http://localhost:8001/retrieval/accio", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { "Authorization": `Bearer ${token}` } : {})
+        },
+        body: JSON.stringify({
+          concept_node: searchQuery,
+          chunk_text: searchQuery,
+          avatar: "cricketer",
+          lecture_id: lectureId
+        })
+      });
+      const data = await resp.json();
+      if (data.chunk_id) {
+        setHighlightedChunks(new Set([data.chunk_id]));
+      } else {
+        setHighlightedChunks(new Set());
       }
-    });
-    setHighlightedChunks(results);
+    } catch (e) {
+      console.error(e);
+    }
   };
 
-  const playChunk = (chunkId: string) => {
+  const playChunk = async (chunkId: string) => {
     setActiveChunkId(chunkId);
-    // In real app: fetch & play `http://localhost:8001/recording/${lectureId}/chunk/${chunkId}`
-    // For demo, we just highlight it as active
+    setProgress(0);
+    if (audioRef.current) {
+      audioRef.current.pause();
+    }
+    
+    try {
+      const token = localStorage.getItem("legilimens_token");
+      const resp = await fetch(`http://localhost:8001/recording/${lectureId}/chunk/${chunkId}`, {
+        headers: token ? { "Authorization": `Bearer ${token}` } : {}
+      });
+      if (!resp.ok) throw new Error("Chunk fetch failed");
+      const blob = await resp.blob();
+      const url = URL.createObjectURL(blob);
+      
+      const audio = new Audio(url);
+      audioRef.current = audio;
+      
+      audio.ontimeupdate = () => {
+        setProgress((audio.currentTime / audio.duration) * 100);
+      };
+      audio.onended = () => {
+        setActiveChunkId(null);
+        setProgress(0);
+      };
+      
+      await audio.play();
+    } catch (e) {
+      console.error(e);
+    }
   };
 
   const formatTime = (ms: number) => {
@@ -73,7 +124,9 @@ export default function ReviewPage() {
       </header>
 
       <section style={styles.timeline}>
-        {chunks.length === 0 ? (
+        {error ? (
+          <p style={styles.empty}>{error}</p>
+        ) : chunks.length === 0 ? (
           <p style={styles.empty}>No recordings found for this lecture.</p>
         ) : (
           <div style={styles.chunkList}>
@@ -88,9 +141,22 @@ export default function ReviewPage() {
                     ...styles.chunkCard,
                     borderColor: isActive ? "#7c3aed" : isHighlighted ? "var(--gryffindor-gold)" : "rgba(255,255,255,0.1)",
                     background: isActive ? "rgba(124, 58, 237, 0.1)" : "rgba(10, 14, 26, 0.6)",
+                    position: "relative",
+                    overflow: "hidden"
                   }}
                   onClick={() => playChunk(chunk.chunk_id)}
                 >
+                  {isActive && (
+                    <div style={{
+                      position: "absolute",
+                      bottom: 0,
+                      left: 0,
+                      height: "4px",
+                      background: "#7c3aed",
+                      width: `${progress}%`,
+                      transition: "width 0.1s linear"
+                    }} />
+                  )}
                   <div style={styles.chunkTime}>
                     <span style={styles.timeText}>{formatTime(chunk.start_ts)} - {formatTime(chunk.end_ts)}</span>
                   </div>

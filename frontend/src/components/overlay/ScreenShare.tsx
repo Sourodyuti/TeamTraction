@@ -1,6 +1,6 @@
 "use client";
 
-import { useScreenShare } from "@/hooks/useScreenShare";
+import { useScreenCapture } from "@/hooks/useScreenCapture";
 import styles from "./ScreenShare.module.css";
 
 interface ScreenShareProps {
@@ -9,22 +9,25 @@ interface ScreenShareProps {
 }
 
 export function ScreenShare({ onStreamReady, onContextDetected }: ScreenShareProps) {
-  const { isSharing, stream, startShare, stopShare, videoRef, error } = useScreenShare();
+  // useScreenShare was replaced by useScreenCapture — uses same getDisplayMedia API
+  const { isCapturing, stream, startCapture, stopCapture, videoRef, recordingStatus } = useScreenCapture();
 
-  if (isSharing && stream) {
+  if (isCapturing && stream) {
     onStreamReady?.(stream);
   }
 
+  const error = recordingStatus === "error" ? "Screen capture failed" : null;
+
   return (
     <div className={styles.container}>
-      {!isSharing ? (
+      {!isCapturing ? (
         <div className={styles.startPanel}>
           <h3 className={styles.title}>Share Your Lecture Window</h3>
           <p className={styles.description}>
             Select the window showing your lecture slides. Students will see 
             this content with overlay alerts.
           </p>
-          <button className={styles.btnShare} onClick={startShare}>
+          <button className={styles.btnShare} onClick={startCapture}>
             📺 Share Window
           </button>
           {error && <p className={styles.error}>{error}</p>}
@@ -34,7 +37,7 @@ export function ScreenShare({ onStreamReady, onContextDetected }: ScreenSharePro
           <div className={styles.header}>
             <span className={styles.badge}>🔴 Live</span>
             <span className={styles.status}>Sharing lecture window</span>
-            <button className={styles.btnStop} onClick={stopShare}>
+            <button className={styles.btnStop} onClick={stopCapture}>
               Stop Sharing
             </button>
           </div>

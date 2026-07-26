@@ -18,9 +18,7 @@ import Link from "next/link";
 
 export default function MuffliatoPage() {
   const { user, loading: authLoading, requireAuth } = useAuth();
-  const [studentId] = useState(
-    () => `student_${Math.random().toString(36).slice(2, 8)}`
-  );
+  const [showToast, setShowToast] = useState(false);
   const [lectureId] = useState(1);
   const { sendPing, lastMessage, connected } = useWebSocket(lectureId);
 
@@ -29,15 +27,38 @@ export default function MuffliatoPage() {
 
   // Guard: student route
   useEffect(() => { requireAuth("student"); }, [requireAuth]);
+
+  useEffect(() => {
+    if (!authLoading && user) {
+      if (!localStorage.getItem("legilimens_student_id")) {
+        localStorage.setItem("legilimens_student_id", `student_${Math.random().toString(36).slice(2, 8)}`);
+      }
+    }
+  }, [authLoading, user]);
+
+  const studentId = typeof window !== "undefined" ? localStorage.getItem("legilimens_student_id") || "student_x" : "student_x";
+
   if (authLoading || !user) return <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", color: "#c9a84c", fontSize: "1.5rem" }}>🔮 Verifying...</div>;
 
   useEffect(() => {
     if (lastMessage?.type === 'analogy_ready') {
       const { analogy_text, audio_url } = lastMessage as any;
       setAnalogy({ text: analogy_text, audioUrl: audio_url });
+      setShowToast(true);
+      setTimeout(() => setShowToast(false), 3000);
       if (audio_url) {
-        const audio = new Audio(audio_url);
-        audio.play().catch(e => console.error("Auto-play prevented", e));
+        const playAudio = (url: string, retries = 1) => {
+          const audio = new Audio(url);
+          audio.play().catch(e => {
+            console.error("Auto-play prevented", e);
+            if (retries > 0) {
+              setTimeout(() => playAudio(url, retries - 1), 500);
+            } else {
+              setAnalogy(prev => prev ? { ...prev, text: prev.text + " (Auto-play failed, tap to play)" } : null);
+            }
+          });
+        };
+        playAudio(audio_url);
       }
     }
   }, [lastMessage]);
@@ -48,6 +69,11 @@ export default function MuffliatoPage() {
 
   return (
     <main style={styles.main}>
+      {showToast && analogy && (
+        <div className="toast">
+          🔮 {analogy.text.substring(0, 50)}...
+        </div>
+      )}
       <header style={styles.header}>
         <h1 style={styles.title}>🔮 Muffliato</h1>
         <p style={styles.subtitle}>Tap to signal — quietly, without disrupting class</p>
@@ -59,18 +85,21 @@ export default function MuffliatoPage() {
       <section style={styles.buttons}>
         <button
           style={{ ...styles.button, background: "var(--lost-red)" }}
+          className={connected ? "pulse-button" : ""}
           onClick={() => handleSignal(SignalType.LOST)}
         >
           🪄 I&apos;m lost
         </button>
         <button
           style={{ ...styles.button, background: "var(--slower-amber)" }}
+          className={connected ? "pulse-button" : ""}
           onClick={() => handleSignal(SignalType.SLOWER)}
         >
           ⏩ Slower
         </button>
         <button
           style={{ ...styles.button, background: "var(--gotit-green)" }}
+          className={connected ? "pulse-button" : ""}
           onClick={() => handleSignal(SignalType.GOTIT)}
         >
           ✅ Got it
@@ -145,12 +174,6 @@ export default function MuffliatoPage() {
           ← Back to Legilimens Landing
         </Link>
       </footer>
-
-      {lastMessage && (
-        <footer style={styles.debugFooter}>
-          <small>Last signal: {JSON.stringify(lastMessage)}</small>
-        </footer>
-      )}
     </main>
   );
 }
