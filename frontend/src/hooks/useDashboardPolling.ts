@@ -135,8 +135,8 @@ function buildServiceCards(
   cards.push({
     key: "nvidia",
     name: "NVIDIA NIM (Fallback LLM)",
-    healthy: !!retrieval?.nvidia_configured,
-    detail: "nvidia-nim · fallback inference",
+    healthy: !!(retrieval as any)?.nvidia_configured,
+    detail: "meta/llama-3.3-70b-instruct",
     spellColor: "#76B900",
   });
 
