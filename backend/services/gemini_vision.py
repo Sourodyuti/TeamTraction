@@ -154,7 +154,7 @@ class GeminiVisionClient:
         api_key = settings.nvidia_api_key
         if not api_key:
             logger.warning("NVIDIA_API_KEY not set for fallback")
-            return {"topic_node": "unknown", "slide_text_summary": "", "difficulty": 5, "key_terms": []}, 0.0
+            return {"topic_node": "unknown", "comprehensive_summary": "", "brief_summary": "", "full_text_transcription": "", "diagram_descriptions": "", "difficulty": 5, "key_terms": []}, 0.0
 
         import base64
         import httpx
@@ -238,7 +238,7 @@ class GeminiVisionClient:
             return context, elapsed_ms
         except Exception as e:
             logger.error("Nvidia Vision fallback failed: %s", e)
-            return {"topic_node": "unknown", "slide_text_summary": "", "difficulty": 5, "key_terms": []}, 0.0
+            return {"topic_node": "unknown", "comprehensive_summary": "", "brief_summary": "", "full_text_transcription": "", "diagram_descriptions": "", "difficulty": 5, "key_terms": []}, 0.0
 
     def health_check(self) -> bool:
         if not self.available:
@@ -257,6 +257,4 @@ def get_gemini_vision() -> GeminiVisionClient | None:
     global _gemini_vision_client
     if _gemini_vision_client is None:
         _gemini_vision_client = GeminiVisionClient()
-    if _gemini_vision_client and _gemini_vision_client.available:
-        return _gemini_vision_client
-    return None
+    return _gemini_vision_client

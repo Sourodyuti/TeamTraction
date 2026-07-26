@@ -39,8 +39,8 @@ class FrameAnalysisResponse(BaseModel):
 @router.post("/analyze-frame", response_model=FrameAnalysisResponse)
 async def analyze_frame(req: FrameAnalysisRequest) -> FrameAnalysisResponse:
     vision = get_gemini_vision()
-    if not vision or not vision.available:
-        raise HTTPException(status_code=503, detail="Gemini Vision not available")
+    if not vision:
+        raise HTTPException(status_code=503, detail="Vision client not initialized")
 
     try:
         image_bytes = base64.b64decode(req.image)

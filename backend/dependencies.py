@@ -38,10 +38,8 @@ def get_embedder() -> Embedder:
     return _embedder
 
 
-def get_vectorai() -> VectorAIClient:
-    """FastAPI dependency — returns the VectorAI DB client singleton."""
-    if _vectorai_client is None:
-        raise RuntimeError("VectorAI client not initialized — server not started")
+def get_vectorai() -> VectorAIClient | None:
+    """FastAPI dependency — returns the VectorAI DB client singleton (or None if unavailable)."""
     return _vectorai_client
 
 
