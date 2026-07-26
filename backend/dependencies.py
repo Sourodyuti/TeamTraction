@@ -36,8 +36,10 @@ def get_embedder() -> Embedder | None:
     return _embedder
 
 
-def get_vectorai() -> VectorAIClient | None:
-    """FastAPI dependency — returns the VectorAI DB client singleton (or None if unavailable)."""
+def get_vectorai() -> VectorAIClient:
+    """FastAPI dependency — returns the VectorAI client (Actian)."""
+    if _vectorai_client is None:
+        raise RuntimeError("Actian VectorAI DB client strictly required but not initialized")
     return _vectorai_client
 
 

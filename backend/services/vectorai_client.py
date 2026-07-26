@@ -35,16 +35,21 @@ class VectorAIClient:
 
     def connect(self) -> None:
         """Initialize the VectorAI DB client connection."""
-        from qdrant_client import QdrantClient as _VectorAIClient
+        from actian_vectorai import VectorAIClient as _VectorAIClient
 
         logger.info("Connecting to Actian VectorAI DB at %s ...", self.address)
-        self._client = _VectorAIClient(host=self.host, port=self.port)
+        self._context = _VectorAIClient(self.address)
+        self._client = self._context.__enter__()
         logger.info("VectorAI DB client connected")
 
     def close(self) -> None:
         """Close the client connection gracefully."""
-        if self._client is not None:
-            self._client.close()
+        if self._context is not None:
+            try:
+                self._context.__exit__(None, None, None)
+            except Exception:
+                pass
+            self._context = None
             self._client = None
             logger.info("VectorAI DB client closed")
 
@@ -53,7 +58,7 @@ class VectorAIClient:
         if self._client is None:
             self.connect()
         try:
-            self._client.get_collections()
+            self._client.health_check()
         except Exception:
             logger.warning("VectorAI DB connection lost, reconnecting...")
             self.connect()
@@ -61,12 +66,12 @@ class VectorAIClient:
 
     def create_lecture_chunks_collection(self) -> None:
         """Create the `lecture_chunks` collection (384-dim, Cosine). Idempotent."""
-        from qdrant_client.models import VectorParams, Distance
+        from actian_vectorai import VectorParams, Distance
 
         client = self._get_client()
 
         try:
-            if client.collection_exists(COLLECTION_NAME):
+            if client.collections.exists(COLLECTION_NAME):
                 logger.info(
                     "Collection '%s' already exists — skipping creation",
                     COLLECTION_NAME,
@@ -76,8 +81,8 @@ class VectorAIClient:
             pass
 
         try:
-            client.create_collection(
-                collection_name=COLLECTION_NAME,
+            client.collections.create(
+                COLLECTION_NAME,
                 vectors_config=VectorParams(
                     size=VECTOR_DIM,
                     distance=Distance.Cosine,
@@ -97,7 +102,7 @@ class VectorAIClient:
 
         Each point: {"id": str|int, "vector": list[float], "payload": dict}
         """
-        from qdrant_client.models import PointStruct
+        from actian_vectorai import PointStruct
 
         client = self._get_client()
 
@@ -115,7 +120,7 @@ class VectorAIClient:
                 )
             )
 
-        client.upsert(
+        client.points.upsert(
             collection_name=COLLECTION_NAME,
             points=actian_points,
         )
@@ -139,7 +144,7 @@ class VectorAIClient:
 
         if filter:
             try:
-                from qdrant_client.models import Filter, FieldCondition, MatchValue
+                from actian_vectorai.filters import Filter, FieldCondition, MatchValue
                 conditions = [
                     FieldCondition(key=k, match=MatchValue(value=v))
                     for k, v in filter.items()
@@ -149,12 +154,12 @@ class VectorAIClient:
                 pass  # filter unsupported — search without it
 
         try:
-            hits = client.search(**search_kwargs)
+            hits = client.points.search(**search_kwargs)
         except Exception:
             # Fallback: search without filter, filter in Python
             search_kwargs.pop("filter", None)
             search_kwargs["limit"] = limit * 5
-            hits = client.search(**search_kwargs)
+            hits = client.points.search(**search_kwargs)
             if filter:
                 hits = [
                     p for p in hits
@@ -193,7 +198,7 @@ class VectorAIClient:
         }
 
         try:
-            from qdrant_client.models import Filter, FieldCondition, MatchValue, Range
+            from actian_vectorai.filters import Filter, FieldCondition, MatchValue, Range
             must_conditions = []
             
             if topic_node is not None:
@@ -215,14 +220,14 @@ class VectorAIClient:
                 ))
             
             if must_conditions:
-                search_kwargs["query_filter"] = Filter(must=must_conditions)
+                search_kwargs["filter"] = Filter(must=must_conditions)
                 
-            hits = client.search(**search_kwargs)
+            hits = client.points.search(**search_kwargs)
         except Exception:
             # Fallback to Python-side filtering
-            search_kwargs.pop("query_filter", None)
+            search_kwargs.pop("filter", None)
             search_kwargs["limit"] = limit * 10
-            hits = client.search(**search_kwargs)
+            hits = client.points.search(**search_kwargs)
             
             filtered_hits = []
             for hit in hits:
@@ -262,12 +267,12 @@ class VectorAIClient:
 
     def create_multimodal_collection(self) -> None:
         """Creates collection with named vectors: 'text' (384-dim, Cosine) + 'context' (384-dim, Cosine)"""
-        from qdrant_client.models import VectorParams, Distance
+        from actian_vectorai import VectorParams, Distance
 
         client = self._get_client()
 
         try:
-            if client.collection_exists(MULTIMODAL_COLLECTION_NAME):
+            if client.collections.exists(MULTIMODAL_COLLECTION_NAME):
                 logger.info(
                     "Collection '%s' already exists — skipping creation",
                     MULTIMODAL_COLLECTION_NAME,
@@ -277,8 +282,8 @@ class VectorAIClient:
             pass
 
         try:
-            client.create_collection(
-                collection_name=MULTIMODAL_COLLECTION_NAME,
+            client.collections.create(
+                MULTIMODAL_COLLECTION_NAME,
                 vectors_config={
                     "text": VectorParams(size=384, distance=Distance.Cosine),
                     "context": VectorParams(size=384, distance=Distance.Cosine),
@@ -293,7 +298,7 @@ class VectorAIClient:
 
     def upsert_multimodal_chunks(self, points: list[dict]) -> None:
         """Upserts points with named vectors {"text": [...], "context": [...]}"""
-        from qdrant_client.models import PointStruct
+        from actian_vectorai import PointStruct
 
         client = self._get_client()
         import uuid
@@ -310,7 +315,7 @@ class VectorAIClient:
                 )
             )
 
-        client.upsert(
+        client.points.upsert(
             collection_name=MULTIMODAL_COLLECTION_NAME,
             points=actian_points,
         )
@@ -331,7 +336,7 @@ class VectorAIClient:
 
         if filter:
             try:
-                from qdrant_client.models import Filter, FieldCondition, MatchValue
+                from actian_vectorai.filters import Filter, FieldCondition, MatchValue
                 conditions = [
                     FieldCondition(key=k, match=MatchValue(value=v))
                     for k, v in filter.items()
@@ -341,11 +346,11 @@ class VectorAIClient:
                 pass
 
         try:
-            hits = client.search(**search_kwargs)
+            hits = client.points.search(**search_kwargs)
         except Exception:
             search_kwargs.pop("filter", None)
             search_kwargs["limit"] = limit * 5
-            hits = client.search(**search_kwargs)
+            hits = client.points.search(**search_kwargs)
             if filter:
                 hits = [
                     p for p in hits
@@ -402,7 +407,7 @@ class VectorAIClient:
         """Return True if the VectorAI DB is reachable."""
         try:
             client = self._get_client()
-            info = client.get_collections()
+            info = client.health_check()
             return bool(info)
         except Exception:
             return False
