@@ -54,11 +54,14 @@ class VectorAIClient:
             logger.info("VectorAI DB client closed")
 
     def _get_client(self) -> Any:
-        """Return the live client, raising if not connected."""
+        """Return the live client, reconnecting if necessary."""
         if self._client is None:
-            raise RuntimeError(
-                "VectorAI client not connected — call connect() first"
-            )
+            self.connect()
+        try:
+            self._client.health_check()
+        except Exception:
+            logger.warning("VectorAI DB connection lost, reconnecting...")
+            self.connect()
         return self._client
 
     def create_lecture_chunks_collection(self) -> None:

@@ -21,6 +21,7 @@ router = APIRouter(prefix="/vision", tags=["vision"])
 class FrameAnalysisRequest(BaseModel):
     image: str
     mime_type: str = "image/png"
+    question: str | None = None
 
 
 class FrameAnalysisResponse(BaseModel):
@@ -29,6 +30,7 @@ class FrameAnalysisResponse(BaseModel):
     difficulty: int
     key_terms: list[str]
     latency_ms: float
+    answer: str | None = None
 
 
 @router.post("/analyze-frame", response_model=FrameAnalysisResponse)
@@ -42,14 +44,37 @@ async def analyze_frame(req: FrameAnalysisRequest) -> FrameAnalysisResponse:
     except Exception:
         raise HTTPException(status_code=400, detail="Invalid base64 image data")
 
-    context, latency_ms = vision.analyze_frame(image_bytes, req.mime_type)
+    import asyncio
+    context, latency_ms = await asyncio.to_thread(
+        vision.analyze_frame, image_bytes, req.mime_type, req.question
+    )
+
+    topic_node = context.get("topic_node", "unknown")
+    slide_text_summary = context.get("slide_text_summary", "")
+    difficulty = context.get("difficulty", 5)
+
+    # Index into VectorDB for future retrieval
+    if topic_node != "unknown" and slide_text_summary:
+        from services.knowledge_base import get_knowledge_base
+        import uuid
+        import time
+        kb = get_knowledge_base()
+        kb.index_chunk(
+            lecture_id=1,
+            chunk_id=str(uuid.uuid4()),
+            text=slide_text_summary,
+            ts=time.time(),
+            topic_node=topic_node,
+            difficulty=difficulty
+        )
 
     return FrameAnalysisResponse(
-        topic_node=context.get("topic_node", "unknown"),
-        slide_text_summary=context.get("slide_text_summary", ""),
-        difficulty=context.get("difficulty", 5),
+        topic_node=topic_node,
+        slide_text_summary=slide_text_summary,
+        difficulty=difficulty,
         key_terms=context.get("key_terms", []),
         latency_ms=latency_ms,
+        answer=context.get("answer"),
     )
 
 

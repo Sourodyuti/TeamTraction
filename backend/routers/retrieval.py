@@ -32,7 +32,25 @@ from services.offline_cache import get_cached_analogy
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/retrieval", tags=["retrieval"])
 
-AUDIO_CACHE: dict[str, bytes] = {}
+from collections import OrderedDict
+
+class BoundedCache:
+    def __init__(self, capacity: int = 50):
+        self.cache: OrderedDict[str, bytes] = OrderedDict()
+        self.capacity = capacity
+
+    def __setitem__(self, key: str, value: bytes) -> None:
+        self.cache[key] = value
+        if len(self.cache) > self.capacity:
+            self.cache.popitem(last=False)
+
+    def __getitem__(self, key: str) -> bytes:
+        return self.cache[key]
+        
+    def __contains__(self, key: str) -> bool:
+        return key in self.cache
+
+AUDIO_CACHE = BoundedCache(capacity=50)
 
 async def run_retrieval_pipeline(
     concept_node: str,

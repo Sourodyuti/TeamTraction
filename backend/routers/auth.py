@@ -35,13 +35,23 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 _bearer = HTTPBearer(auto_error=False)
 
 
-def _hash_password(plain: str) -> str:
+import asyncio
+
+def _hash_password_sync(plain: str) -> str:
     # Use bcrypt directly — passlib 1.7.4 is incompatible with bcrypt 4.x on Python 3.14
     return _bcrypt_lib.hashpw(plain.encode(), _bcrypt_lib.gensalt()).decode()
 
 
-def _verify_password(plain: str, hashed: str) -> bool:
+def _verify_password_sync(plain: str, hashed: str) -> bool:
     return _bcrypt_lib.checkpw(plain.encode(), hashed.encode())
+
+
+async def _hash_password(plain: str) -> str:
+    return await asyncio.to_thread(_hash_password_sync, plain)
+
+
+async def _verify_password(plain: str, hashed: str) -> bool:
+    return await asyncio.to_thread(_verify_password_sync, plain, hashed)
 
 
 def _create_access_token(payload: dict) -> str:
@@ -185,7 +195,7 @@ async def register(body: RegisterRequest) -> TokenResponse:
     doc = {
         "email": body.email,
         "username": body.username,
-        "hashed_password": _hash_password(body.password),
+        "hashed_password": await _hash_password(body.password),
         "role": body.role,
         "full_name": body.full_name,
         "created_at": now,
@@ -207,7 +217,7 @@ async def login(body: LoginRequest) -> TokenResponse:
     db = get_db()
 
     user = await db.users.find_one({"email": body.email})
-    if user is None or not _verify_password(body.password, user["hashed_password"]):
+    if user is None or not (await _verify_password(body.password, user["hashed_password"])):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid email or password",

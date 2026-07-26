@@ -185,11 +185,47 @@ export default function OverlayPage() {
   }, []);
 
   // ── Capture + Analyze in one shot ──
+  const lastHashRef = useRef<number | null>(null);
+
+  const computeImageHash = (dataUrl: string): Promise<number> => {
+    return new Promise((resolve) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement("canvas");
+        const size = 32; // Small size for fast hashing
+        canvas.width = size;
+        canvas.height = size;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) return resolve(0);
+        ctx.drawImage(img, 0, 0, size, size);
+        const imgData = ctx.getImageData(0, 0, size, size).data;
+        let sum = 0;
+        for (let i = 0; i < imgData.length; i += 4) {
+          sum += imgData[i] + imgData[i+1] + imgData[i+2]; // ignore alpha
+        }
+        resolve(sum);
+      };
+      img.src = dataUrl;
+    });
+  };
+
   const captureAndAnalyze = useCallback(async () => {
     const dataUrl = await handleCaptureScreen();
     if (!dataUrl) return;
+
+    // Check if image changed significantly (5% threshold)
+    const currentHash = await computeImageHash(dataUrl);
+    if (lastHashRef.current !== null) {
+      const diff = Math.abs(currentHash - lastHashRef.current);
+      const maxHash = 32 * 32 * 3 * 255;
+      if (diff / maxHash < 0.05) {
+        return; // Image hasn't changed enough, skip analysis
+      }
+    }
+    lastHashRef.current = currentHash;
+
     await analyzeFrame(dataUrl);
-  }, [handleCaptureScreen]);
+  }, [handleCaptureScreen, analyzeFrame]);
 
   // ── Send frame to backend vision endpoint ──
   const analyzeFrame = useCallback(async (dataUrl: string) => {
@@ -260,6 +296,7 @@ export default function OverlayPage() {
           const data = await resp.json();
           setAskResponse(
             `**Topic:** ${data.topic_node}\n\n` +
+            `**Answer:** ${data.answer || "No answer provided"}\n\n` +
             `**Summary:** ${data.slide_text_summary}\n\n` +
             `**Key Terms:** ${(data.key_terms || []).join(", ")}`
           );

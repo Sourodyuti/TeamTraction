@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import logging
 
-from models.database import get_vector_connection, with_retry
+from models.database import get_vector_connection, get_backend, with_retry
 from models.schemas import ConfusionEvent
 
 logger = logging.getLogger(__name__)
@@ -98,7 +98,10 @@ class VectorAnalyticsClient:
         Returns a list of dicts with keys:
             concept_node, lost_count, total_signals, avg_density
         """
-        sql = """
+        backend_name = get_backend().name
+        limit_clause = f"LIMIT {limit}" if backend_name == "sqlite" else f"FETCH FIRST {limit} ROWS ONLY"
+
+        sql = f"""
             SELECT
                 concept_node,
                 SUM(CASE WHEN signal_type = 'lost' THEN 1 ELSE 0 END) AS lost_count,
@@ -107,11 +110,11 @@ class VectorAnalyticsClient:
             WHERE lecture_id = ?
             GROUP BY concept_node
             ORDER BY lost_count DESC
-            LIMIT ?
+            {limit_clause}
         """
         with get_vector_connection() as conn:
             cursor = conn.cursor()
-            cursor.execute(sql, (lecture_id, limit))
+            cursor.execute(sql, (lecture_id,))
             rows = cursor.fetchall()
 
         results = []
@@ -132,7 +135,13 @@ class VectorAnalyticsClient:
         Uses a self-join window approach (SQLite-compatible datetime).
         Returns list of {ts, density} dicts.
         """
-        sql = """
+        backend_name = get_backend().name
+        if backend_name == "sqlite":
+            time_condition = "AND w.ts >= datetime(e.ts, '-60 seconds')"
+        else:
+            time_condition = "AND w.ts >= e.ts - INTERVAL '60' SECOND"
+
+        sql = f"""
             SELECT
                 e.ts,
                 CASE
@@ -143,7 +152,7 @@ class VectorAnalyticsClient:
             FROM confusion_events e
             LEFT JOIN confusion_events w
                 ON  w.lecture_id   = e.lecture_id
-                AND w.ts          >= datetime(e.ts, '-60 seconds')
+                {time_condition}
                 AND w.ts          <= e.ts
             WHERE e.lecture_id = ?
             GROUP BY e.ts

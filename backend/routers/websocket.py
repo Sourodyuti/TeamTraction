@@ -285,17 +285,17 @@ async def handle_ping(
     if ping.signal_type == SignalType.LOST:
         fired = threshold_tracker.record_lost(lecture_id, concept_node, ping.student_id)
 
-        alert_msg = {
-            "type": "confusion_alert",
-            "lecture_id": lecture_id,
-            "concept_node": concept_node,
-            "count": len(threshold_tracker._windows[lecture_id][concept_node]),
-            "recommendation": f"Students experiencing confusion on {concept_node}",
-            "ts": datetime.now().isoformat(),
-        }
-        await manager.send_teacher_alert(lecture_id, alert_msg)
-
         if fired:
+            alert_msg = {
+                "type": "confusion_alert",
+                "lecture_id": lecture_id,
+                "concept_node": concept_node,
+                "count": len(threshold_tracker._windows[lecture_id][concept_node]),
+                "recommendation": f"Students experiencing confusion on {concept_node}",
+                "ts": datetime.now().isoformat(),
+            }
+            await manager.send_teacher_alert(lecture_id, alert_msg)
+
             logger.info("Threshold met: lecture=%d concept=%s — triggering Accio", lecture_id, concept_node)
             avatar_str = data.get("avatar", "cricketer")
             try:

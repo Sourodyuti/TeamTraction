@@ -30,6 +30,7 @@ export function useWebSocket(
   const [latencyBadge, setLatencyBadge] = useState<LatencyBadge | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimer = useRef<ReturnType<typeof setTimeout>>();
+  const reconnectAttempts = useRef(0);
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
   const playAudio = useCallback((url: string) => {
@@ -55,6 +56,7 @@ export function useWebSocket(
 
     ws.onopen = () => {
       setConnected(true);
+      reconnectAttempts.current = 0;
       console.log("[Legilimens WS] connected", wsUrl);
     };
 
@@ -84,7 +86,9 @@ export function useWebSocket(
     ws.onclose = () => {
       setConnected(false);
       // Exponential backoff capped at 5s
-      reconnectTimer.current = setTimeout(connect, Math.min(5000, 1000));
+      const delay = Math.min(5000, 1000 * Math.pow(2, reconnectAttempts.current));
+      reconnectAttempts.current += 1;
+      reconnectTimer.current = setTimeout(connect, delay);
     };
 
     ws.onerror = (e) => {

@@ -21,6 +21,7 @@ from typing import Optional
 from fastapi import APIRouter, HTTPException, Query
 
 from models.schemas import TopConfusingMoment
+from services.vector_client import VectorAnalyticsClient
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/analytics", tags=["analytics"])
@@ -86,62 +87,22 @@ async def top_confusing_moments(
     if hasattr(limit, 'default'):
         limit = limit.default
     
-    rows = _execute_query(
-        """
-        SELECT concept_node,
-               SUM(CASE WHEN signal_type = 'lost' THEN 1 ELSE 0 END) AS lost_count,
-               COUNT(*) AS total
-        FROM confusion_events
-        WHERE lecture_id = ?
-        GROUP BY concept_node
-        ORDER BY lost_count DESC
-        """,
-        (lecture_id,),
-    )
-    
-    if not rows:
-        return []
-
-    results = []
-    for concept_node, lost_count, total in rows[:limit]:
-        density_rows = _execute_query(
-            """
-            SELECT AVG(CASE WHEN signal_type = 'lost' THEN 1.0 ELSE 0 END) AS density
-            FROM confusion_events
-            WHERE lecture_id = ? AND concept_node = ?
-            """,
-            (lecture_id, concept_node),
-        )
-        avg_density = float(density_rows[0][0]) if density_rows and density_rows[0][0] is not None else 0.0
-
-        results.append(
-            TopConfusingMoment(
-                concept_node=concept_node,
-                lost_count=int(lost_count),
-                total_signals=int(total),
-                avg_density=avg_density,
-            )
-        )
-    return results
+    client = VectorAnalyticsClient()
+    results = client.get_top_confusing_moments(lecture_id, limit)
+    return [TopConfusingMoment(**r) for r in results]
 
 @router.get("/density")
 async def confusion_density(
     lecture_id: int,
     window_sec: int = Query(60, ge=10, le=300),
 ) -> dict:
-    rows = _execute_query(
-        """
-        SELECT ts, signal_type 
-        FROM confusion_events 
-        WHERE lecture_id = ? 
-        ORDER BY ts ASC
-        """,
-        (lecture_id,)
-    )
-    return {"data": [{"ts": r[0].isoformat() if not isinstance(r[0], str) else r[0], "type": r[1]} for r in rows]}
+    client = VectorAnalyticsClient()
+    results = client.get_confusion_density_timeline(lecture_id)
+    return {"data": results}
 
 @router.get("/cohort-heatmap")
 async def cohort_heatmap(lecture_id: int) -> dict:
+    # Retain the exact API contract for the frontend
     rows = _execute_query(
         """
         SELECT concept_node, student_id, signal_type 
@@ -154,7 +115,7 @@ async def cohort_heatmap(lecture_id: int) -> dict:
     for r in rows:
         node, st_id, sig = r[0], r[1], r[2]
         if node not in heatmap:
-            heatmap[node] = {"lost": 0, "gotit": 0}
+            heatmap[node] = {"lost": 0, "gotit": 0, "slower": 0}
         if sig in heatmap[node]:
             heatmap[node][sig] += 1
     return heatmap

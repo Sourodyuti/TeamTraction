@@ -31,6 +31,23 @@ If you cannot determine the topic, respond with:
 {"topic_node": "unknown", "slide_text_summary": "", "difficulty": 5, "key_terms": []}
 """
 
+_ASK_PROMPT = """You are an AI teaching assistant analyzing a lecture slide.
+A student has asked a question: "{question}"
+
+Context from previous slides: {context}
+
+Provide a helpful, educational answer. Include exactly 2 relevant YouTube video URLs at the end of your answer.
+
+Respond in this JSON format only:
+{{
+  "topic_node": "snake_case_topic_name",
+  "slide_text_summary": "brief summary of slide content",
+  "difficulty": 5,
+  "key_terms": ["term1", "term2"],
+  "answer": "Your detailed answer to the student's question, including 2 YouTube links."
+}}
+"""
+
 
 class GeminiVisionClient:
     """Client for analyzing screen frames with Gemini Vision."""
@@ -57,18 +74,22 @@ class GeminiVisionClient:
         self,
         image_bytes: bytes,
         mime_type: str = "image/png",
+        question: str | None = None
     ) -> tuple[dict[str, Any], float]:
         if not self.available:
-            logger.warning("Gemini Vision unavailable - returning empty context")
-            return {
-                "topic_node": "unknown",
-                "slide_text_summary": "",
-                "difficulty": 5,
-                "key_terms": [],
-            }, 0.0
+            logger.warning("Gemini Vision unavailable - attempting Nvidia fallback")
+            return self._nvidia_fallback(image_bytes, mime_type, question)
 
         try:
             start = time.perf_counter()
+
+            if question:
+                from services.knowledge_base import get_knowledge_base
+                hits = get_knowledge_base().search_knowledge(question, lecture_id=1, limit=3)
+                context_str = "\n".join([str(h) for h in hits]) if hits else "None"
+                prompt = _ASK_PROMPT.format(question=question, context=context_str)
+            else:
+                prompt = _CONTEXT_PROMPT
 
             from google.genai import types
 
@@ -83,7 +104,7 @@ class GeminiVisionClient:
                                     mime_type=mime_type,
                                 )
                             ),
-                            types.Part(text=_CONTEXT_PROMPT),
+                            types.Part(text=prompt),
                         ]
                     )
                 ],
@@ -110,13 +131,82 @@ class GeminiVisionClient:
             return context, elapsed_ms
 
         except Exception as e:
-            logger.error("Gemini Vision analysis failed: %s", e)
-            return {
-                "topic_node": "unknown",
-                "slide_text_summary": "",
-                "difficulty": 5,
-                "key_terms": [],
-            }, 0.0
+            logger.error("Gemini Vision analysis failed: %s - attempting Nvidia fallback", e)
+            return self._nvidia_fallback(image_bytes, mime_type, question)
+
+    def _nvidia_fallback(
+        self,
+        image_bytes: bytes,
+        mime_type: str,
+        question: str | None
+    ) -> tuple[dict[str, Any], float]:
+        """Fallback to Nvidia NIM Vision model."""
+        start = time.perf_counter()
+        api_key = settings.nvidia_api_key
+        if not api_key:
+            logger.warning("NVIDIA_API_KEY not set for fallback")
+            return {"topic_node": "unknown", "slide_text_summary": "", "difficulty": 5, "key_terms": []}, 0.0
+
+        import base64
+        import httpx
+        import json
+
+        b64_image = base64.b64encode(image_bytes).decode("utf-8")
+        
+        if question:
+            from services.knowledge_base import get_knowledge_base
+            hits = get_knowledge_base().search_knowledge(question, lecture_id=1, limit=3)
+            context_str = "\n".join([str(h) for h in hits]) if hits else "None"
+            prompt = _ASK_PROMPT.format(question=question, context=context_str)
+        else:
+            prompt = _CONTEXT_PROMPT
+
+        headers = {
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json"
+        }
+        
+        payload = {
+            "model": "meta/llama-3.2-90b-vision-instruct",
+            "messages": [
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": prompt},
+                        {"type": "image_url", "image_url": {"url": f"data:{mime_type};base64,{b64_image}"}}
+                    ]
+                }
+            ],
+            "max_tokens": 1024,
+            "temperature": 0.1
+        }
+        
+        try:
+            with httpx.Client(timeout=180.0) as client:
+                resp = client.post(
+                    "https://integrate.api.nvidia.com/v1/chat/completions",
+                    headers=headers,
+                    json=payload
+                )
+            
+            resp.raise_for_status()
+            response_text = resp.json()["choices"][0]["message"]["content"].strip()
+            
+            if response_text.startswith("```json"):
+                response_text = response_text[7:]
+            if response_text.startswith("```"):
+                response_text = response_text[3:]
+            if response_text.endswith("```"):
+                response_text = response_text[:-3]
+
+            context = json.loads(response_text.strip())
+            elapsed_ms = (time.perf_counter() - start) * 1000
+            
+            logger.info("Nvidia Vision fallback succeeded: topic=%s latency=%.0fms", context.get("topic_node", "unknown"), elapsed_ms)
+            return context, elapsed_ms
+        except Exception as e:
+            logger.error("Nvidia Vision fallback failed: %s", e)
+            return {"topic_node": "unknown", "slide_text_summary": "", "difficulty": 5, "key_terms": []}, 0.0
 
     def health_check(self) -> bool:
         if not self.available:
