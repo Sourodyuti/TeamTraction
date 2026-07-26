@@ -16,14 +16,14 @@ build/
 venv/
 env/
 
-# Environment files (committed for deployment convenience — SANITIZE before making repo public)
-.env.local
-.env.development.local
-.env.test.local
-.env.production.local
+# Environment files (secrets should never be committed)
+.env
+.env.*
+!.env.example
+!.env.prod.example
+!.env.mcp
 frontend/.env
 backend/.env
-*.env
 
 # IDE
 .idea/
@@ -100,5 +100,4 @@ Desktop.ini
 *.tsbuildinfo
 .next/
 # Production secrets
-.env.prod
 nginx/ssl/
