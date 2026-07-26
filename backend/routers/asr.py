@@ -185,11 +185,14 @@ async def ingest_chunk(chunk: ChunkIngest, background_tasks: BackgroundTasks) ->
     # 1. Store in current_chunk (in-memory always; SQL best-effort)
     _store_current_chunk(chunk, chunk_id)  # never raises — SQL errors are swallowed gracefully
 
-    # 2. Call KnowledgeBase to embed and upsert synchronously
+    # 2. Call KnowledgeBase to embed and upsert to VectorAI DB (canonical indexing path).
+    #    _embed_and_upsert() is intentionally NOT scheduled here — it would create a
+    #    duplicate point in the same collection via a different code path.
+    chunk_indexed = False
     try:
         from services.knowledge_base import get_knowledge_base
         kb = get_knowledge_base()
-        kb.index_chunk(
+        chunk_indexed = kb.index_chunk(
             lecture_id=chunk.lecture_id,
             chunk_id=chunk_id,
             text=chunk.text,
@@ -197,19 +200,26 @@ async def ingest_chunk(chunk: ChunkIngest, background_tasks: BackgroundTasks) ->
             topic_node=chunk.topic_node,
             difficulty=chunk.difficulty
         )
-    except Exception as e:
-        logger.error("Failed to index chunk in KB: %s", e)
+        if not chunk_indexed:
+            logger.warning(
+                "Chunk '%s' (lecture=%d) was NOT indexed to VectorAI DB — "
+                "check knowledge_base logs for details.",
+                chunk_id, chunk.lecture_id,
+            )
+    except Exception:
+        logger.exception("Unexpected error indexing chunk '%s' in KB", chunk_id)
 
-    background_tasks.add_task(_embed_and_upsert, chunk, chunk_id)
+    # Only broadcast — embedding/upsert already done above synchronously.
     background_tasks.add_task(_broadcast_chunk_update, chunk.lecture_id, chunk_id, chunk.topic_node)
 
-    logger.info("Ingested chunk %s: topic=%s lecture=%d", chunk_id, chunk.topic_node, chunk.lecture_id)
+    logger.info("Ingested chunk %s: topic=%s lecture=%d indexed=%s",
+                chunk_id, chunk.topic_node, chunk.lecture_id, chunk_indexed)
 
     return ChunkResponse(
         chunk_id=chunk_id,
         status="stored",
         topic_node=chunk.topic_node,
-        embedded=False,
+        embedded=chunk_indexed,
     )
 
 
