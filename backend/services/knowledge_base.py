@@ -33,7 +33,26 @@ class KnowledgeBase:
         topic_node: str = "general",
         difficulty: int = 3
     ) -> bool:
-        """Immediately embed the text and upsert to VectorAI DB, update in-memory index."""
+        """Embed text and upsert to VectorAI DB, update in-memory index resiliently."""
+        
+        # 1. Update in-memory index and persist to JSONL first
+        entry = {
+            "chunk_id": chunk_id,
+            "topic_node": topic_node,
+            "ts": ts,
+            "text_preview": text[:256],
+            "lecture_id": lecture_id,
+        }
+
+        with self._lock:
+            if lecture_id not in self._index:
+                self._index[lecture_id] = []
+            self._index[lecture_id].append(entry)
+            self._index[lecture_id].sort(key=lambda x: x["ts"])
+
+        self._append_to_jsonl(lecture_id, entry)
+
+        # 2. Strict Actian VectorDB upsert
         try:
             embedder = get_embedder()
             vectorai = get_vectorai()
@@ -55,55 +74,32 @@ class KnowledgeBase:
                     "difficulty": difficulty,
                 }
             }
-            if vectorai:
-                vectorai.upsert_chunks([point])
-
-            entry = {
-                "chunk_id": chunk_id,
-                "topic_node": topic_node,
-                "ts": ts,
-                "text_preview": text[:256],
-                "lecture_id": lecture_id,
-            }
-
-            with self._lock:
-                if lecture_id not in self._index:
-                    self._index[lecture_id] = []
-
-                self._index[lecture_id].append(entry)
-
-                # Keep index sorted by ts for safety
-                self._index[lecture_id].sort(key=lambda x: x["ts"])
-
-            # Persist to JSONL
-            self._append_to_jsonl(lecture_id, entry)
-
-            # Also index into BM25 for hybrid fusion search
-            try:
-                from services.hybrid_search import get_hybrid_engine
-                hybrid = get_hybrid_engine()
-                if hybrid is not None:
-                    hybrid.bm25_index.add_document(
-                        doc_id=str(chunk_id),
-                        text=text,
-                        payload={
-                            "topic_node": topic_node,
-                            "lecture_id": lecture_id,
-                            "ts": ts,
-                            "text": text,
-                            "source": "live_lecture",
-                            "difficulty": difficulty,
-                        },
-                    )
-            except Exception as bm25_err:
-                logger.debug("BM25 indexing skipped (non-fatal): %s", bm25_err)
-
-            logger.info("KnowledgeBase indexed chunk %s for lecture %s", chunk_id, lecture_id)
-            return True
-
+            vectorai.upsert_chunks([point])
+            logger.info("KnowledgeBase indexed chunk %s for lecture %s into Actian DB", chunk_id, lecture_id)
         except Exception as e:
-            logger.error("Failed to index chunk in KnowledgeBase: %s", e)
-            return False
+            logger.error("Actian DB upsert failed, but chunk is safely saved locally: %s", e)
+
+        # 3. Also index into BM25 for hybrid fusion search
+        try:
+            from services.hybrid_search import get_hybrid_engine
+            hybrid = get_hybrid_engine()
+            if hybrid is not None:
+                hybrid.bm25_index.add_document(
+                    doc_id=str(chunk_id),
+                    text=text,
+                    payload={
+                        "topic_node": topic_node,
+                        "lecture_id": lecture_id,
+                        "ts": ts,
+                        "text": text,
+                        "source": "live_lecture",
+                        "difficulty": difficulty,
+                    },
+                )
+        except Exception as bm25_err:
+            logger.debug("BM25 indexing skipped (non-fatal): %s", bm25_err)
+
+        return True
 
     def get_knowledge_for_concept(self, lecture_id: int, concept_node: str, limit: int = 5) -> list[dict]:
         """Returns the most recent N chunks for that concept from the in-memory index."""
