@@ -9,7 +9,11 @@ pydantic>=2.0
 pydantic-settings>=2.0
 
 # Actian
-actian-vectorai-client       # Actian VectorAI DB SDK
+# fix #6: package is 'actian-vectorai' (not 'actian-vectorai-client').
+# The importable module is 'actian_vectorai' (from actian_vectorai import ...).
+# 'actian-vectorai-client' is not a valid PyPI package and would cause
+# ModuleNotFoundError at runtime.
+actian-vectorai               # Actian VectorAI DB SDK
 pyodbc                        # Actian Vector columnar SQL driver
 
 # Embeddings (on-prem, bge-small-en, 384-dim)
