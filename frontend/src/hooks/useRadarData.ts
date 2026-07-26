@@ -9,7 +9,7 @@ export function useRadarData(lectureId: number = 1) {
   const [timelineData, setTimelineData] = useState<TimelinePoint[]>([]);
   const [latencyMs, setLatencyMs] = useState<number | null>(null);
 
-  const { lastMessage } = useWebSocket(lectureId);
+  const { lastMessage } = useWebSocket(lectureId, "teacher");
 
   useEffect(() => {
     if (!lastMessage) return;

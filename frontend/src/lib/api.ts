@@ -5,7 +5,7 @@
  */
 import type { TopConfusingMoment, AnalogyResponse } from "./types";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8001";
 
 export const api = {
   async health(): Promise<{ status: string }> {

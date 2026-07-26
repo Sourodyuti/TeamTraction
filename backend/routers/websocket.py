@@ -237,7 +237,10 @@ async def _trigger_accio(
 ) -> None:
     """Call the /retrieval/accio endpoint and broadcast the analogy to all students."""
     try:
-        async with httpx.AsyncClient(base_url="http://localhost:8000", timeout=30.0) as client:
+        from config import settings
+        backend_port = getattr(settings, 'backend_port', 8001)
+        backend_url = f"http://localhost:{backend_port}"
+        async with httpx.AsyncClient(base_url=backend_url, timeout=30.0) as client:
             resp = await client.post(
                 "/retrieval/accio",
                 params={

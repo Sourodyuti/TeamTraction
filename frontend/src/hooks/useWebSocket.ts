@@ -11,16 +11,16 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import type { StudentPing, ServerMessage } from "@/lib/types";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "ws://localhost:8000";
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "ws://localhost:8001";
 
-export function useWebSocket(lectureId: number) {
+export function useWebSocket(lectureId: number, role: "student" | "teacher" = "student") {
   const [connected, setConnected] = useState(false);
   const [lastMessage, setLastMessage] = useState<ServerMessage | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimer = useRef<ReturnType<typeof setTimeout>>();
 
   const connect = useCallback(() => {
-    const wsUrl = `${API_URL.replace(/^http/, "ws")}/ws/lecture/${lectureId}`;
+    const wsUrl = `${API_URL.replace(/^http/, "ws")}/ws/lecture/${lectureId}?role=${role}`;
     const ws = new WebSocket(wsUrl);
     wsRef.current = ws;
 
@@ -49,7 +49,7 @@ export function useWebSocket(lectureId: number) {
       console.error("[Legilimens WS] error:", e);
       ws.close();
     };
-  }, [lectureId]);
+  }, [lectureId, role]);
 
   useEffect(() => {
     connect();
