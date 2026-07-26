@@ -54,6 +54,12 @@ class KnowledgeBase:
             }
             if vectorai:
                 vectorai.upsert_chunks([point])
+            else:
+                logger.warning(
+                    "VectorAI unavailable — chunk '%s' (lecture=%s) NOT indexed to DB. "
+                    "Check VECTORAI_HOST/VECTORAI_PORT and startup logs.",
+                    chunk_id, lecture_id,
+                )
 
             entry = {
                 "chunk_id": chunk_id,
@@ -99,7 +105,8 @@ class KnowledgeBase:
             return True
 
         except Exception as e:
-            logger.error("Failed to index chunk in KnowledgeBase: %s", e)
+            # Use exception() to capture full traceback — plain error() hides the cause.
+            logger.exception("Failed to index chunk '%s' in KnowledgeBase", chunk_id)
             return False
 
     def get_knowledge_for_concept(self, lecture_id: int, concept_node: str, limit: int = 5) -> list[dict]:
