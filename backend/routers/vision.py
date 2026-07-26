@@ -175,8 +175,13 @@ async def analyze_and_index(req: FrameIndexRequest) -> FrameIndexResponse:
 async def vision_health() -> dict:
     vision = get_gemini_vision()
     available = vision is not None and vision.available
+    rate_limited_until = vision.rate_limited_until if vision else 0.0
+    rate_limited = rate_limited_until > 0
+    import time as _time
     return {
         "available": available,
         "model": "gemini-2.5-flash" if available else None,
+        "rate_limited": rate_limited,
+        "rate_limited_seconds_remaining": max(0.0, round(rate_limited_until - _time.time(), 1)) if rate_limited else 0.0,
     }
 

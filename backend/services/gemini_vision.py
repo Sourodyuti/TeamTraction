@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import time
 from typing import Any
 
@@ -38,6 +39,8 @@ class GeminiVisionClient:
     def __init__(self, api_key: str | None = None) -> None:
         self._api_key = api_key or settings.gemini_api_key
         self._client = None
+        # 429 circuit breaker: don't fire again until this timestamp (epoch seconds)
+        self._rate_limited_until: float = 0.0
         self._init_client()
 
     def _init_client(self) -> None:
@@ -53,19 +56,30 @@ class GeminiVisionClient:
     def available(self) -> bool:
         return self._client is not None
 
+    @property
+    def rate_limited_until(self) -> float:
+        """Epoch seconds until rate limit clears. 0 means not rate-limited."""
+        return self._rate_limited_until if time.time() < self._rate_limited_until else 0.0
+
     def analyze_frame(
         self,
         image_bytes: bytes,
         mime_type: str = "image/png",
     ) -> tuple[dict[str, Any], float]:
+        _UNKNOWN = {"topic_node": "unknown", "slide_text_summary": "", "difficulty": 5, "key_terms": []}
+
         if not self.available:
-            logger.warning("Gemini Vision unavailable - returning empty context")
-            return {
-                "topic_node": "unknown",
-                "slide_text_summary": "",
-                "difficulty": 5,
-                "key_terms": [],
-            }, 0.0
+            logger.warning("Gemini Vision unavailable — returning empty context")
+            return _UNKNOWN, 0.0
+
+        # 429 circuit breaker — refuse calls until backoff window clears
+        wait_remaining = self._rate_limited_until - time.time()
+        if wait_remaining > 0:
+            logger.warning(
+                "Gemini Vision rate-limited — skipping call, %.0fs remaining in backoff window.",
+                wait_remaining,
+            )
+            return _UNKNOWN, 0.0
 
         try:
             start = time.perf_counter()
@@ -110,13 +124,20 @@ class GeminiVisionClient:
             return context, elapsed_ms
 
         except Exception as e:
-            logger.error("Gemini Vision analysis failed: %s", e)
-            return {
-                "topic_node": "unknown",
-                "slide_text_summary": "",
-                "difficulty": 5,
-                "key_terms": [],
-            }, 0.0
+            err_str = str(e)
+            if "429" in err_str or "RESOURCE_EXHAUSTED" in err_str:
+                # Parse retry delay from error message, default 60s
+                retry_match = re.search(r"retry[\s\w]*?(\d+(?:\.\d+)?)s", err_str)
+                retry_delay = float(retry_match.group(1)) if retry_match else 60.0
+                self._rate_limited_until = time.time() + retry_delay
+                logger.warning(
+                    "Gemini Vision 429 — rate limit hit. Circuit breaker active for %.0fs. "
+                    "Free tier: 20 req/day. Consider upgrading or reducing capture interval.",
+                    retry_delay,
+                )
+            else:
+                logger.error("Gemini Vision analysis failed: %s", e)
+            return _UNKNOWN, 0.0
 
     def health_check(self) -> bool:
         if not self.available:

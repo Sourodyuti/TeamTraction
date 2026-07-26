@@ -33,7 +33,10 @@ declare global {
 /*  Constants                                                         */
 /* ------------------------------------------------------------------ */
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
-const CAPTURE_INTERVAL_MS = 8000; // Auto-analyze every 8s
+// 45s between captures — free Gemini tier = 20 req/day.
+// Even at 45s this exhausts quota in ~15min of active use.
+// Set to 120000 (2min) for sustained sessions.
+const CAPTURE_INTERVAL_MS = 45_000;
 const MAX_SCREENSHOTS = 4;
 
 /* ------------------------------------------------------------------ */
@@ -191,19 +194,37 @@ export default function OverlayPage() {
     await analyzeFrame(dataUrl);
   }, [handleCaptureScreen]);
 
-  // ── Send frame to backend vision endpoint ──
+  // 429 rate-limit guard — skip calls while Gemini is backed off
+  const rateLimitedRef = useRef<number>(0); // epoch ms when backoff clears
+
+  // ── Send frame to backend vision endpoint (analyze + index into VectorAI DB) ──
   const analyzeFrame = useCallback(async (dataUrl: string) => {
+    // Skip if we're inside a 429 backoff window
+    if (Date.now() < rateLimitedRef.current) {
+      return;
+    }
     try {
       const base64 = dataUrl.split(",")[1];
       if (!base64) return;
       const mime = dataUrl.startsWith("data:image/png") ? "image/png" : "image/jpeg";
       const start = performance.now();
-      const resp = await fetch(`${API_URL}/vision/analyze-frame`, {
+      // analyze-and-index: Gemini Vision result is persisted to VectorAI DB
+      const resp = await fetch(`${API_URL}/vision/analyze-and-index`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ image: base64, mime_type: mime }),
+        body: JSON.stringify({
+          image: base64,
+          mime_type: mime,
+          lecture_id: 1,
+          ts: Date.now() / 1000,
+        }),
       });
       const elapsed = performance.now() - start;
+      if (resp.status === 429) {
+        // Back off for 60s on rate limit
+        rateLimitedRef.current = Date.now() + 60_000;
+        return;
+      }
       if (!resp.ok) return;
       const ctx = await resp.json();
       if (ctx.topic_node && ctx.topic_node !== "unknown") {
@@ -243,16 +264,18 @@ export default function OverlayPage() {
     setIsAsking(true);
     setAskResponse(null);
     try {
-      // For now, use the vision endpoint with the latest screenshot
+      // Use analyze-and-index so the manual ask screenshot is also persisted
       const latestScreenshot = screenshots[0];
       if (latestScreenshot) {
         const base64 = latestScreenshot.split(",")[1];
-        const resp = await fetch(`${API_URL}/vision/analyze-frame`, {
+        const resp = await fetch(`${API_URL}/vision/analyze-and-index`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             image: base64,
             mime_type: "image/png",
+            lecture_id: 1,
+            ts: Date.now() / 1000,
             question: askInput,
           }),
         });
@@ -261,7 +284,8 @@ export default function OverlayPage() {
           setAskResponse(
             `**Topic:** ${data.topic_node}\n\n` +
             `**Summary:** ${data.slide_text_summary}\n\n` +
-            `**Key Terms:** ${(data.key_terms || []).join(", ")}`
+            `**Key Terms:** ${(data.key_terms || []).join(", ")}` +
+            (data.indexed ? `\n\n✅ Indexed as chunk \`${data.chunk_id}\`` : "")
           );
         }
       }
