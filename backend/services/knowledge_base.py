@@ -59,6 +59,26 @@ class KnowledgeBase:
                 # Keep index sorted by ts for safety
                 self._index[lecture_id].sort(key=lambda x: x["ts"])
             
+            # Also index into BM25 for hybrid fusion search
+            try:
+                from services.hybrid_search import get_hybrid_engine
+                hybrid = get_hybrid_engine()
+                if hybrid is not None:
+                    hybrid.bm25_index.add_document(
+                        doc_id=str(chunk_id),
+                        text=text,
+                        payload={
+                            "topic_node": topic_node,
+                            "lecture_id": lecture_id,
+                            "ts": ts,
+                            "text": text,
+                            "source": "live_lecture",
+                            "difficulty": difficulty,
+                        },
+                    )
+            except Exception as bm25_err:
+                logger.debug("BM25 indexing skipped (non-fatal): %s", bm25_err)
+
             logger.info("KnowledgeBase indexed chunk %s for lecture %s", chunk_id, lecture_id)
             return True
             

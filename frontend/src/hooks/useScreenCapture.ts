@@ -2,13 +2,30 @@
 
 import { useRef, useState, useCallback, useEffect } from "react";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8001";
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
-export function useScreenCapture(onContextDetected?: (context: { topic_node: string; slide_text_summary: string; key_terms: string[] }) => void) {
+/**
+ * Dual-mode screen capture hook.
+ * 
+ * When running inside the Electron stealth client, uses the native
+ * `electronAPI.screen.capture()` IPC for silent, one-shot frame grabs
+ * via desktopCapturer — no recording indicator, no user prompt.
+ *
+ * When running in a normal browser, falls back to `getDisplayMedia()`.
+ */
+export function useScreenCapture(
+  onContextDetected?: (context: {
+    topic_node: string;
+    slide_text_summary: string;
+    key_terms: string[];
+  }) => void
+) {
   const [stream, setStream] = useState<MediaStream | null>(null);
   const [isCapturing, setIsCapturing] = useState(false);
-  const [recordingStatus, setRecordingStatus] = useState<'idle' | 'recording' | 'error'>('idle');
+  const [isElectron, setIsElectron] = useState(false);
+  const [recordingStatus, setRecordingStatus] = useState<"idle" | "recording" | "error">("idle");
   const [currentConcept, setCurrentConcept] = useState<string | null>(null);
+  const [lastScreenshot, setLastScreenshot] = useState<string | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
@@ -16,7 +33,35 @@ export function useScreenCapture(onContextDetected?: (context: { topic_node: str
   const onContextRef = useRef(onContextDetected);
   onContextRef.current = onContextDetected;
 
+  useEffect(() => {
+    if (typeof window !== "undefined" && window.electronAPI?.screen) {
+      setIsElectron(true);
+    }
+  }, []);
+
+  // ── Electron IPC capture (silent one-shot) ──
+  const captureElectron = useCallback(async (): Promise<string | null> => {
+    if (!window.electronAPI?.screen) return null;
+    try {
+      const result = await window.electronAPI.screen.capture();
+      if (result.success) {
+        setLastScreenshot(result.dataUrl);
+        return result.dataUrl;
+      }
+      console.warn("[useScreenCapture] Electron capture failed:", result.error);
+      return null;
+    } catch (err) {
+      console.error("[useScreenCapture] Electron capture error:", err);
+      return null;
+    }
+  }, []);
+
+  // ── Browser canvas capture ──
   const captureFrame = useCallback(async (): Promise<string | null> => {
+    // Prefer Electron path
+    if (isElectron) return captureElectron();
+
+    // Fallback: grab from video element
     const video = videoRef.current;
     if (!video || !video.videoWidth || !video.videoHeight) return null;
 
@@ -27,18 +72,25 @@ export function useScreenCapture(onContextDetected?: (context: { topic_node: str
     if (!ctx) return null;
 
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-    return canvas.toDataURL("image/jpeg", 0.7).split(",")[1];
-  }, []);
+    const dataUrl = canvas.toDataURL("image/jpeg", 0.7);
+    setLastScreenshot(dataUrl);
+    return dataUrl;
+  }, [isElectron, captureElectron]);
 
+  // ── Send frame for vision analysis ──
   const sendFrameForAnalysis = useCallback(async () => {
     try {
-      const imageBase64 = await captureFrame();
-      if (!imageBase64) return;
+      const dataUrl = await captureFrame();
+      if (!dataUrl) return;
+
+      const base64 = dataUrl.split(",")[1];
+      if (!base64) return;
+      const mime = dataUrl.startsWith("data:image/png") ? "image/png" : "image/jpeg";
 
       const resp = await fetch(`${API_URL}/vision/analyze-frame`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ image: imageBase64, mime_type: "image/jpeg" }),
+        body: JSON.stringify({ image: base64, mime_type: mime }),
       });
       if (!resp.ok) return;
 
@@ -52,15 +104,20 @@ export function useScreenCapture(onContextDetected?: (context: { topic_node: str
     }
   }, [captureFrame]);
 
+  // ── Start screen capture ──
   const startCapture = async () => {
+    if (isElectron) {
+      // In Electron mode, no continuous stream needed — we do one-shot grabs
+      setIsCapturing(true);
+      return;
+    }
+    // Browser fallback
     try {
       const displayStream = await navigator.mediaDevices.getDisplayMedia({
         video: { frameRate: 5 },
-        audio: true
+        audio: true,
       });
-      displayStream.getVideoTracks()[0].onended = () => {
-        stopCapture();
-      };
+      displayStream.getVideoTracks()[0].onended = () => stopCapture();
       setStream(displayStream);
       setIsCapturing(true);
     } catch (err: any) {
@@ -69,13 +126,14 @@ export function useScreenCapture(onContextDetected?: (context: { topic_node: str
     }
   };
 
+  // ── Stop screen capture ──
   const stopCapture = useCallback(() => {
     if (frameIntervalRef.current) {
       clearInterval(frameIntervalRef.current);
       frameIntervalRef.current = null;
     }
     if (stream) {
-      stream.getTracks().forEach(track => track.stop());
+      stream.getTracks().forEach((track) => track.stop());
     }
     setStream(null);
     setIsCapturing(false);
@@ -86,11 +144,7 @@ export function useScreenCapture(onContextDetected?: (context: { topic_node: str
     stopRecording();
   }, [stream]);
 
-  const captureAudioChunks = async function* () {
-    yield new Blob();
-    return;
-  };
-
+  // ── Audio recording (WebSocket to backend) ──
   const startRecording = (lectureId: number) => {
     if (!stream) {
       console.error("No stream available to record");
@@ -100,58 +154,51 @@ export function useScreenCapture(onContextDetected?: (context: { topic_node: str
     if (audioTracks.length === 0) {
       console.warn("No audio track found in the stream");
     }
-
     try {
-      const recorder = new MediaRecorder(stream, { mimeType: 'audio/webm;codecs=opus' });
+      const recorder = new MediaRecorder(stream, { mimeType: "audio/webm;codecs=opus" });
       mediaRecorderRef.current = recorder;
-      
+
       const wsUrl = `${API_URL.replace(/^http/, "ws")}/transcription/live/${lectureId}`;
       const ws = new WebSocket(wsUrl);
       wsRef.current = ws;
 
       ws.onopen = () => {
-        setRecordingStatus('recording');
+        setRecordingStatus("recording");
         recorder.start(3000);
       };
-
-      ws.onerror = (e) => {
-        console.error("Transcription WS error", e);
-        setRecordingStatus('error');
-      };
+      ws.onerror = () => setRecordingStatus("error");
 
       recorder.ondataavailable = (e) => {
         if (e.data.size > 0 && ws.readyState === WebSocket.OPEN) {
           ws.send(e.data);
         }
       };
-
-      recorder.onerror = () => {
-        setRecordingStatus('error');
-      };
-
+      recorder.onerror = () => setRecordingStatus("error");
     } catch (e) {
       console.error("MediaRecorder setup error:", e);
-      setRecordingStatus('error');
+      setRecordingStatus("error");
     }
   };
 
   const stopRecording = () => {
-    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
       mediaRecorderRef.current.stop();
     }
     if (wsRef.current) {
       wsRef.current.close();
       wsRef.current = null;
     }
-    setRecordingStatus('idle');
+    setRecordingStatus("idle");
   };
 
+  // ── Sync video element with stream ──
   useEffect(() => {
     if (stream && videoRef.current) {
       videoRef.current.srcObject = stream;
     }
   }, [stream]);
 
+  // ── Auto-analyze interval ──
   useEffect(() => {
     if (isCapturing && !frameIntervalRef.current) {
       frameIntervalRef.current = setInterval(sendFrameForAnalysis, 5000);
@@ -170,12 +217,13 @@ export function useScreenCapture(onContextDetected?: (context: { topic_node: str
     stream,
     videoRef,
     isCapturing,
-    captureAudioChunks,
+    isElectron,
     startRecording,
     stopRecording,
     recordingStatus,
     captureFrame,
     currentConcept,
     sendFrameForAnalysis,
+    lastScreenshot,
   };
 }

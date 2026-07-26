@@ -110,3 +110,53 @@ class RecordingChunk(BaseModel):
     file_path: str
     indexed: bool = False
     created_at: datetime
+
+
+# ─── Advanced Search (Hybrid Fusion + Filtered Search) ────────────
+
+class SearchMode(str, Enum):
+    """Search strategy for retrieval."""
+    SEMANTIC = "semantic"      # Pure vector similarity
+    KEYWORD = "keyword"        # Pure BM25 keyword
+    HYBRID = "hybrid"          # Fusion of semantic + keyword (RRF)
+    FILTERED = "filtered"      # Semantic + structured filters
+
+
+class HybridSearchRequest(BaseModel):
+    """Advanced search request with fusion and filter support."""
+    query_text: str = Field(..., min_length=1, max_length=5000)
+    mode: SearchMode = SearchMode.HYBRID
+    limit: int = Field(5, ge=1, le=50)
+    alpha: float = Field(0.6, ge=0.0, le=1.0, description="Fusion weight: 0=keyword, 1=semantic")
+    # Structured filters (used when mode=filtered or combined with hybrid)
+    topic_node: Optional[str] = None
+    source: Optional[str] = None
+    lecture_id: Optional[int] = None
+    difficulty_min: Optional[int] = Field(None, ge=1, le=10)
+    difficulty_max: Optional[int] = Field(None, ge=1, le=10)
+    ts_min: Optional[float] = None
+    ts_max: Optional[float] = None
+    # Named vector selection (for multimodal)
+    vector_name: Optional[str] = Field(None, description="Named vector to search: 'text' or 'context'")
+
+
+class HybridSearchResult(BaseModel):
+    """A single result from hybrid/filtered search."""
+    id: str | int
+    text: str = ""
+    topic_node: str = ""
+    source: str = ""
+    score: float
+    semantic_score: Optional[float] = None
+    keyword_score: Optional[float] = None
+    fusion_method: Optional[str] = None
+    payload: dict = Field(default_factory=dict)
+
+
+class HybridSearchResponse(BaseModel):
+    """Response from the advanced search endpoint."""
+    results: list[HybridSearchResult]
+    mode: SearchMode
+    query_text: str
+    total_results: int
+    latency_ms: dict = Field(default_factory=dict)
