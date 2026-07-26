@@ -216,7 +216,7 @@ class HybridSearchEngine:
             query_vector, embed_ms = self.embedder.encode_with_latency(query_text)
         else:
             query_vectors = self.embedder.encode([query_text])
-            query_vector = query_vectors[0]
+            query_vector = query_vectors[0]  # encode() returns batch; extract single vector
             embed_ms = (time.perf_counter() - t_embed_start) * 1000.0
 
         # 2. Semantic Search
