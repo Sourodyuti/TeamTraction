@@ -109,18 +109,21 @@ class GeminiVisionClient:
                     )
                 ],
             )
+            response_text = response.text
 
             elapsed_ms = (time.perf_counter() - start) * 1000
 
-            response_text = response.text.strip()
-            if response_text.startswith("```json"):
-                response_text = response_text[7:]
-            if response_text.startswith("```"):
-                response_text = response_text[3:]
-            if response_text.endswith("```"):
-                response_text = response_text[:-3]
-
-            context = json.loads(response_text.strip())
+            logger.debug("Raw Gemini response: %s", response_text)
+            start_idx = response_text.find("{")
+            end_idx = response_text.rfind("}")
+            if start_idx != -1 and end_idx != -1 and end_idx >= start_idx:
+                try:
+                    context = json.loads(response_text[start_idx:end_idx + 1])
+                except Exception as e:
+                    logger.error("JSON decode error: %s. Extracted string: %s", e, response_text[start_idx:end_idx + 1])
+                    raise
+            else:
+                raise ValueError(f"No JSON block found in response: {response_text}")
 
             logger.info(
                 "Screen context detected: topic=%s latency=%.0fms",
@@ -217,14 +220,12 @@ class GeminiVisionClient:
             resp.raise_for_status()
             response_text = resp.json()["choices"][0]["message"]["content"].strip()
             
-            if response_text.startswith("```json"):
-                response_text = response_text[7:]
-            if response_text.startswith("```"):
-                response_text = response_text[3:]
-            if response_text.endswith("```"):
-                response_text = response_text[:-3]
-
-            context = json.loads(response_text.strip())
+            start_idx = response_text.find("{")
+            end_idx = response_text.rfind("}")
+            if start_idx != -1 and end_idx != -1 and end_idx >= start_idx:
+                context = json.loads(response_text[start_idx:end_idx + 1])
+            else:
+                raise ValueError(f"No JSON block found in response: {response_text}")
             elapsed_ms = (time.perf_counter() - start) * 1000
             
             logger.info("Nvidia Vision fallback succeeded: topic=%s latency=%.0fms", context.get("topic_node", "unknown"), elapsed_ms)
