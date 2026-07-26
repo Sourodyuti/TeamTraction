@@ -67,9 +67,10 @@ cd "$PROJECT_ROOT/backend"
 pkill -f "uvicorn main:app" 2>/dev/null || true
 
 source "$PROJECT_ROOT/.venv/bin/activate"
-uvicorn main:app --host 0.0.0.0 --port 8000 --reload \
+nohup uvicorn main:app --host 0.0.0.0 --port 8000 --reload \
     > /tmp/legilimens-backend.log 2>&1 &
 BACKEND_PID=$!
+disown $BACKEND_PID 2>/dev/null || true
 echo "   Backend PID: $BACKEND_PID"
 
 for i in $(seq 1 30); do
@@ -98,8 +99,9 @@ cd "$PROJECT_ROOT/frontend"
 if [ ! -d "node_modules" ]; then
     npm install --silent
 fi
-npm run dev > /tmp/legilimens-frontend.log 2>&1 &
+nohup npm run dev > /tmp/legilimens-frontend.log 2>&1 &
 FRONTEND_PID=$!
+disown $FRONTEND_PID 2>/dev/null || true
 echo "   Frontend PID: $FRONTEND_PID"
 
 echo ""
