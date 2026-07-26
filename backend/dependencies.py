@@ -31,10 +31,8 @@ def set_analytics(client: VectorAnalyticsClient) -> None:
     _vector_analytics = client
 
 
-def get_embedder() -> Embedder:
-    """FastAPI dependency — returns the warmed-up embedder singleton."""
-    if _embedder is None:
-        raise RuntimeError("Embedder not initialized — server not started")
+def get_embedder() -> Embedder | None:
+    """FastAPI dependency — returns the warmed-up embedder singleton (or None if unavailable)."""
     return _embedder
 
 

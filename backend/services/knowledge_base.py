@@ -38,7 +38,10 @@ class KnowledgeBase:
             embedder = get_embedder()
             vectorai = get_vectorai()
 
-            vector, _ = embedder.encode_with_latency(text)
+            if embedder:
+                vector, _ = embedder.encode_with_latency(text)
+            else:
+                vector = [0.0] * 384
 
             point = {
                 "id": chunk_id,
@@ -118,6 +121,9 @@ class KnowledgeBase:
         try:
             embedder = get_embedder()
             vectorai = get_vectorai()
+
+            if not embedder:
+                return []
 
             query_vector, _ = embedder.encode_with_latency(query_text)
 

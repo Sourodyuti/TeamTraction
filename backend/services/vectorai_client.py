@@ -61,7 +61,7 @@ class VectorAIClient:
 
     def create_lecture_chunks_collection(self) -> None:
         """Create the `lecture_chunks` collection (384-dim, Cosine). Idempotent."""
-        from qdrant_client import VectorParams, Distance
+        from qdrant_client.models import VectorParams, Distance
 
         client = self._get_client()
 
@@ -97,7 +97,7 @@ class VectorAIClient:
 
         Each point: {"id": str|int, "vector": list[float], "payload": dict}
         """
-        from qdrant_client import PointStruct
+        from qdrant_client.models import PointStruct
 
         client = self._get_client()
 
@@ -139,7 +139,7 @@ class VectorAIClient:
 
         if filter:
             try:
-                from qdrant_client.filters import Filter, FieldCondition, MatchValue
+                from qdrant_client.models import Filter, FieldCondition, MatchValue
                 conditions = [
                     FieldCondition(key=k, match=MatchValue(value=v))
                     for k, v in filter.items()
@@ -193,7 +193,7 @@ class VectorAIClient:
         }
 
         try:
-            from qdrant_client.filters import Filter, FieldCondition, MatchValue, Range
+            from qdrant_client.models import Filter, FieldCondition, MatchValue, Range
             must_conditions = []
             
             if topic_node is not None:
@@ -262,7 +262,7 @@ class VectorAIClient:
 
     def create_multimodal_collection(self) -> None:
         """Creates collection with named vectors: 'text' (384-dim, Cosine) + 'context' (384-dim, Cosine)"""
-        from qdrant_client import VectorParams, Distance
+        from qdrant_client.models import VectorParams, Distance
 
         client = self._get_client()
 
@@ -293,7 +293,7 @@ class VectorAIClient:
 
     def upsert_multimodal_chunks(self, points: list[dict]) -> None:
         """Upserts points with named vectors {"text": [...], "context": [...]}"""
-        from qdrant_client import PointStruct
+        from qdrant_client.models import PointStruct
 
         client = self._get_client()
         import uuid
@@ -331,7 +331,7 @@ class VectorAIClient:
 
         if filter:
             try:
-                from qdrant_client.filters import Filter, FieldCondition, MatchValue
+                from qdrant_client.models import Filter, FieldCondition, MatchValue
                 conditions = [
                     FieldCondition(key=k, match=MatchValue(value=v))
                     for k, v in filter.items()
