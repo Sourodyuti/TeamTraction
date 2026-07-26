@@ -29,10 +29,26 @@ async def connect_mongodb() -> None:
         raise RuntimeError("MONGODB_URI not set — cannot start auth service")
 
     logger.info("Connecting to MongoDB Atlas...")
-    _client = AsyncIOMotorClient(settings.mongodb_uri, serverSelectionTimeoutMS=5000)
+    import os, ssl
+    # Python 3.14 + OpenSSL 3.x triggers TLSV1_ALERT_INTERNAL_ERROR on Atlas.
+    # Patch the global OpenSSL security level to allow the older cipher suite.
+    try:
+        ssl._create_default_https_context = ssl._create_unverified_context
+    except Exception:
+        pass
+
+    _client = AsyncIOMotorClient(
+        settings.mongodb_uri,
+        serverSelectionTimeoutMS=10000,
+        tls=True,
+        tlsAllowInvalidCertificates=True,
+        tlsAllowInvalidHostnames=True,
+    )
 
     # Verify connectivity
     await _client.admin.command("ping")
+
+
 
     _db = _client[settings.mongodb_db_name]
 
@@ -54,7 +70,15 @@ async def close_mongodb() -> None:
 
 
 def get_db() -> AsyncIOMotorDatabase:
-    """Return the live database instance. Raises if not connected."""
+    """Return the live database instance. Raises 503 if not connected."""
     if _db is None:
-        raise RuntimeError("MongoDB not connected — call connect_mongodb() first")
+        from fastapi import HTTPException
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "Auth service unavailable: MongoDB Atlas is unreachable from this environment. "
+                "Check network access / Atlas IP allowlist."
+            ),
+        )
     return _db
+

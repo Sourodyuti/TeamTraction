@@ -18,10 +18,10 @@ import logging
 from datetime import datetime, timedelta, timezone
 from typing import Literal, Optional
 
+import bcrypt as _bcrypt_lib
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose import JWTError, jwt
-from passlib.context import CryptContext
 from pydantic import BaseModel, EmailStr, Field
 
 from config import settings
@@ -32,16 +32,16 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 
 # ─── Security primitives ─────────────────────────────────────────
 
-_pwd_ctx = CryptContext(schemes=["bcrypt"], deprecated="auto")
 _bearer = HTTPBearer(auto_error=False)
 
 
 def _hash_password(plain: str) -> str:
-    return _pwd_ctx.hash(plain)
+    # Use bcrypt directly — passlib 1.7.4 is incompatible with bcrypt 4.x on Python 3.14
+    return _bcrypt_lib.hashpw(plain.encode(), _bcrypt_lib.gensalt()).decode()
 
 
 def _verify_password(plain: str, hashed: str) -> bool:
-    return _pwd_ctx.verify(plain, hashed)
+    return _bcrypt_lib.checkpw(plain.encode(), hashed.encode())
 
 
 def _create_access_token(payload: dict) -> str:

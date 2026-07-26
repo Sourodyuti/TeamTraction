@@ -72,9 +72,16 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
     logger.info("🔮 Legilimens starting up...")
 
-    # 0. MongoDB (user auth) — fail loudly if URI is missing
+    # 0. MongoDB (user auth) — non-fatal if unreachable (network/TLS issues degrade auth only)
     from services.mongodb_client import connect_mongodb
-    await connect_mongodb()
+    try:
+        await connect_mongodb()
+        logger.info("MongoDB Atlas connected — auth endpoints active")
+    except Exception as e:
+        logger.warning(
+            "MongoDB Atlas unreachable (%s) — auth endpoints will return 503. "
+            "All other routes (radar, retrieval, WebSocket) work normally.", e
+        )
 
     # 1. Logging
     setup_logging(level="INFO")

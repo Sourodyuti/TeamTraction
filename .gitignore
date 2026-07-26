@@ -99,3 +99,6 @@ Desktop.ini
 .turbo
 *.tsbuildinfo
 .next/
+# Production secrets
+.env.prod
+nginx/ssl/
