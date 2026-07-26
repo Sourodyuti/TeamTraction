@@ -4,8 +4,18 @@ Provides:
   - Thread-safe connection pool via a queue
   - Configurable retry with exponential backoff
   - Context managers for safe commit/rollback
-  - Idempotent table creation (DDL)
+  - Idempotent table creation (DDL) — Ingres-dialect compatible
   - Health check
+
+NOTE ON DDL COMPATIBILITY
+--------------------------
+Actian Vector uses Ingres SQL dialect. The following are NOT valid:
+  - CREATE TABLE IF NOT EXISTS  (PostgreSQL extension)
+  - CREATE INDEX IF NOT EXISTS  (PostgreSQL extension)
+
+The correct pattern for idempotent DDL on Actian Vector is to query the
+Ingres system catalogs (iirelation for tables, iiindex for indexes) before
+issuing the CREATE statement. This is what init_*_table() functions do.
 """
 from __future__ import annotations
 
@@ -227,33 +237,79 @@ def with_retry(max_retries: int = 3, backoff_base: float = 1.0, retryable_except
     return decorator
 
 
+# ─── DDL helpers (Ingres catalog guards) ─────────────────────────
+
+def _table_exists(cursor, table_name: str) -> bool:
+    """Check iirelation system catalog — Ingres-compatible table existence check.
+
+    iirelation is the Ingres system catalog for all base tables and views.
+    relid stores the table name (char, padded); reltid is the OID.
+    This replaces 'CREATE TABLE IF NOT EXISTS' which is a PostgreSQL extension
+    and raises a syntax error on Actian Vector.
+    """
+    cursor.execute(
+        "SELECT COUNT(*) FROM iirelation WHERE relid = ?",
+        (table_name.lower(),),
+    )
+    row = cursor.fetchone()
+    return bool(row and row[0] > 0)
+
+
+def _index_exists(cursor, index_name: str) -> bool:
+    """Check iiindex system catalog — Ingres-compatible index existence check.
+
+    Replaces 'CREATE INDEX IF NOT EXISTS' which is not valid Ingres syntax.
+    """
+    cursor.execute(
+        "SELECT COUNT(*) FROM iiindex WHERE index_name = ?",
+        (index_name.lower(),),
+    )
+    row = cursor.fetchone()
+    return bool(row and row[0] > 0)
+
+
 # ─── DDL ─────────────────────────────────────────────────────────
 
 def init_confusion_events_table() -> None:
-    """Create the confusion_events table if it doesn't exist. Idempotent."""
+    """Create the confusion_events table if it doesn't exist. Idempotent.
+
+    Uses iirelation/iiindex catalog guards instead of IF NOT EXISTS
+    clauses (which are not valid Ingres/Actian Vector SQL).
+    """
     with get_vector_connection() as conn:
         cursor = conn.cursor()
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS confusion_events (
-                event_id     BIGINT        NOT NULL,
-                lecture_id   INT           NOT NULL,
-                student_id   VARCHAR(64)   NOT NULL,
-                concept_node VARCHAR(64)   NOT NULL,
-                ts           TIMESTAMP     NOT NULL,
-                signal_type  VARCHAR(16)   NOT NULL CHECK (signal_type IN ('lost', 'gotit', 'slower')),
-                cohort       VARCHAR(32)   NOT NULL DEFAULT 'default'
-            );
-        """)
 
-        # Indexes for the Pensieve queries
-        cursor.execute("""
-            CREATE INDEX IF NOT EXISTS idx_ce_lecture_ts
-                ON confusion_events (lecture_id, ts);
-        """)
-        cursor.execute("""
-            CREATE INDEX IF NOT EXISTS idx_ce_concept
-                ON confusion_events (lecture_id, concept_node, signal_type);
-        """)
+        if not _table_exists(cursor, "confusion_events"):
+            cursor.execute("""
+                CREATE TABLE confusion_events (
+                    event_id     BIGINT        NOT NULL,
+                    lecture_id   INT           NOT NULL,
+                    student_id   VARCHAR(64)   NOT NULL,
+                    concept_node VARCHAR(64)   NOT NULL,
+                    ts           TIMESTAMP     NOT NULL,
+                    signal_type  VARCHAR(16)   NOT NULL
+                        CHECK (signal_type IN ('lost', 'gotit', 'slower')),
+                    cohort       VARCHAR(32)   NOT NULL WITH DEFAULT 'default'
+                )
+            """)
+            logger.info("confusion_events table created")
+        else:
+            logger.debug("confusion_events table already exists — skipping CREATE")
+
+        # Indexes — also guarded via iiindex catalog
+        if not _index_exists(cursor, "idx_ce_lecture_ts"):
+            cursor.execute("""
+                CREATE INDEX idx_ce_lecture_ts
+                    ON confusion_events (lecture_id, ts)
+            """)
+            logger.info("idx_ce_lecture_ts index created")
+
+        if not _index_exists(cursor, "idx_ce_concept"):
+            cursor.execute("""
+                CREATE INDEX idx_ce_concept
+                    ON confusion_events (lecture_id, concept_node, signal_type)
+            """)
+            logger.info("idx_ce_concept index created")
 
         logger.info("confusion_events table ready")
 
@@ -262,35 +318,48 @@ def init_lectures_table() -> None:
     """Create the lectures metadata table. Idempotent."""
     with get_vector_connection() as conn:
         cursor = conn.cursor()
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS lectures (
-                lecture_id   INT           PRIMARY KEY,
-                title        VARCHAR(256)  NOT NULL,
-                topic        VARCHAR(128)  NOT NULL,
-                started_at   TIMESTAMP     NOT NULL,
-                ended_at     TIMESTAMP,
-                status       VARCHAR(16)   NOT NULL DEFAULT 'active'
-                    CHECK (status IN ('active', 'paused', 'ended'))
-            );
-        """)
+
+        if not _table_exists(cursor, "lectures"):
+            cursor.execute("""
+                CREATE TABLE lectures (
+                    lecture_id   INT           NOT NULL PRIMARY KEY,
+                    title        VARCHAR(256)  NOT NULL,
+                    topic        VARCHAR(128)  NOT NULL,
+                    started_at   TIMESTAMP     NOT NULL,
+                    ended_at     TIMESTAMP,
+                    status       VARCHAR(16)   NOT NULL WITH DEFAULT 'active'
+                        CHECK (status IN ('active', 'paused', 'ended'))
+                )
+            """)
+            logger.info("lectures table created")
+        else:
+            logger.debug("lectures table already exists — skipping CREATE")
+
         logger.info("lectures table ready")
 
 
 def init_current_chunk_table() -> None:
     """Tracks the 'current' concept node for each active lecture.
+
     Updated as Whisper chunks arrive, so pings can tag to the right node.
     """
     with get_vector_connection() as conn:
         cursor = conn.cursor()
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS current_chunk (
-                lecture_id   INT           PRIMARY KEY,
-                chunk_id     VARCHAR(64)   NOT NULL,
-                topic_node   VARCHAR(64)   NOT NULL,
-                text_preview VARCHAR(256)  NOT NULL,
-                ts           TIMESTAMP     NOT NULL
-            );
-        """)
+
+        if not _table_exists(cursor, "current_chunk"):
+            cursor.execute("""
+                CREATE TABLE current_chunk (
+                    lecture_id   INT           NOT NULL PRIMARY KEY,
+                    chunk_id     VARCHAR(64)   NOT NULL,
+                    topic_node   VARCHAR(64)   NOT NULL,
+                    text_preview VARCHAR(256)  NOT NULL,
+                    ts           TIMESTAMP     NOT NULL
+                )
+            """)
+            logger.info("current_chunk table created")
+        else:
+            logger.debug("current_chunk table already exists — skipping CREATE")
+
         logger.info("current_chunk table ready")
 
 

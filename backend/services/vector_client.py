@@ -6,11 +6,18 @@ Wraps pyodbc calls to Actian Vector for:
 
 All write operations use the `with_retry` decorator for resilience.
 All read operations return plain dicts so FastAPI can serialise them directly.
+
+NOTE ON INTERVAL SYNTAX
+------------------------
+Actian Vector uses Ingres SQL dialect. ANSI interval literals differ:
+  - PostgreSQL:  e.ts - INTERVAL '60' SECOND
+  - Ingres:      date_add(e.ts, interval '-60 seconds')
+                   or: e.ts - interval '1 minute'
+The get_confusion_density_timeline() method uses the Ingres-compatible form.
 """
 from __future__ import annotations
 
 import logging
-from typing import Any
 
 from models.database import get_vector_connection, with_retry
 from models.schemas import ConfusionEvent
@@ -115,7 +122,6 @@ class VectorAnalyticsClient:
         results = []
         for row in rows:
             concept_node, lost_count, total_signals = row[0], row[1], row[2]
-            # avg_density: proportion of 'lost' signals
             avg_density = lost_count / total_signals if total_signals > 0 else 0.0
             results.append({
                 "concept_node": concept_node,
@@ -130,6 +136,15 @@ class VectorAnalyticsClient:
 
         Uses a self-join window approach for Actian Vector compatibility.
         Returns list of {ts, density} dicts.
+
+        INGRES INTERVAL FIX
+        -------------------
+        PostgreSQL syntax  :  w.ts >= e.ts - INTERVAL '60' SECOND
+        Ingres/Actian syntax:  w.ts >= date_add(e.ts, interval '-60 seconds')
+
+        'INTERVAL '60' SECOND' is a PostgreSQL-only extension and raises
+        a syntax error on Actian Vector. The Ingres interval literal
+        syntax is: INTERVAL 'n unit' with the sign absorbed into the string.
         """
         sql = """
             SELECT
@@ -141,7 +156,7 @@ class VectorAnalyticsClient:
             FROM confusion_events e
             LEFT JOIN confusion_events w
                 ON  w.lecture_id   = e.lecture_id
-                AND w.ts          >= e.ts - INTERVAL '60' SECOND
+                AND w.ts          >= date_add(e.ts, interval '-60 seconds')
                 AND w.ts          <= e.ts
             WHERE e.lecture_id = ?
             GROUP BY e.ts
@@ -161,7 +176,7 @@ class VectorAnalyticsClient:
         ]
 
     def get_cohort_heatmap(self, lecture_id: int) -> list[dict]:
-        """Per-cohort confusion breakdown — lost signals per cohort × concept_node."""
+        """Per-cohort confusion breakdown — lost signals per cohort x concept_node."""
         sql = """
             SELECT
                 cohort,
