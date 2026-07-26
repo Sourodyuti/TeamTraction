@@ -18,7 +18,10 @@ export function useScreenCapture(
     topic_node: string;
     slide_text_summary: string;
     key_terms: string[];
-  }) => void
+    indexed?: boolean;
+    chunk_id?: string;
+  }) => void,
+  lectureId: number = 1
 ) {
   const [stream, setStream] = useState<MediaStream | null>(null);
   const [isCapturing, setIsCapturing] = useState(false);
@@ -77,7 +80,7 @@ export function useScreenCapture(
     return dataUrl;
   }, [isElectron, captureElectron]);
 
-  // ── Send frame for vision analysis ──
+  // ── Send frame for vision analysis + index into VectorAI DB ──
   const sendFrameForAnalysis = useCallback(async () => {
     try {
       const dataUrl = await captureFrame();
@@ -87,10 +90,16 @@ export function useScreenCapture(
       if (!base64) return;
       const mime = dataUrl.startsWith("data:image/png") ? "image/png" : "image/jpeg";
 
-      const resp = await fetch(`${API_URL}/vision/analyze-frame`, {
+      // Use analyze-and-index so every captured frame is persisted in VectorAI DB
+      const resp = await fetch(`${API_URL}/vision/analyze-and-index`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ image: base64, mime_type: mime }),
+        body: JSON.stringify({
+          image: base64,
+          mime_type: mime,
+          lecture_id: lectureId,
+          ts: Date.now() / 1000,  // wall-clock seconds
+        }),
       });
       if (!resp.ok) return;
 
@@ -102,7 +111,7 @@ export function useScreenCapture(
     } catch {
       // Silently retry on next interval
     }
-  }, [captureFrame]);
+  }, [captureFrame, lectureId]);
 
   // ── Start screen capture ──
   const startCapture = async () => {
