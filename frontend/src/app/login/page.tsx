@@ -97,6 +97,41 @@ export default function LoginPage() {
           </button>
         </form>
 
+        {/* Demo Login Buttons for Judges & Testing */}
+        <div style={{ marginTop: 24, textAlign: 'center' }}>
+          <div style={{ color: '#9f8a6d', fontSize: 13, marginBottom: 8 }}>Quick Demo Access (no backend needed)</div>
+          <div style={{ display: 'flex', gap: 12, justifyContent: 'center' }}>
+            <button
+              type="button"
+              onClick={() => {
+                localStorage.setItem('legilimens_user', JSON.stringify({
+                  id: 'demo-prof', email: 'prof@hogwarts.edu', username: 'Prof. Dumbledore',
+                  role: 'teacher', full_name: 'Albus Dumbledore', created_at: new Date().toISOString()
+                }));
+                localStorage.setItem('legilimens_token', 'demo-token-teacher-' + Date.now());
+                window.location.href = '/dashboard';
+              }}
+              style={{ ...s.btn, background: 'linear-gradient(135deg, #14532d, #052e16)', fontSize: 14, padding: '10px 18px' }}
+            >
+              🧙 Demo as Professor
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                localStorage.setItem('legilimens_user', JSON.stringify({
+                  id: 'demo-student', email: 'harry@hogwarts.edu', username: 'Harry Potter',
+                  role: 'student', full_name: 'Harry Potter', created_at: new Date().toISOString()
+                }));
+                localStorage.setItem('legilimens_token', 'demo-token-student-' + Date.now());
+                window.location.href = '/muffliato';
+              }}
+              style={{ ...s.btn, background: 'linear-gradient(135deg, #1e3a5f, #0f172a)', fontSize: 14, padding: '10px 18px' }}
+            >
+              🪄 Demo as Student
+            </button>
+          </div>
+        </div>
+
         <p style={s.footer}>
           New here?{" "}
           <Link href="/register" style={s.link}>
