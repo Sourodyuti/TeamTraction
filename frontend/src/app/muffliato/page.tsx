@@ -14,7 +14,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useWebSocket } from "@/hooks/useWebSocket";
 import { SignalType } from "@/lib/types";
-import type { VideoResult } from "@/lib/types";
+import type { VideoResult, RecordingChunk } from "@/lib/types";
 import { useAuth } from "@/hooks/useAuth";
 import { api } from "@/lib/api";
 import Link from "next/link";
@@ -37,6 +37,13 @@ export default function MuffliatoPage() {
   // Video recommendations state
   const [videos, setVideos] = useState<VideoResult[]>([]);
   const [videosLoading, setVideosLoading] = useState(false);
+
+  // Catch-up state
+  const [catchUpChunks, setCatchUpChunks] = useState<RecordingChunk[]>([]);
+  const [catchUpLoading, setCatchUpLoading] = useState(false);
+  const [playingChunkId, setPlayingChunkId] = useState<string | null>(null);
+  const [confusionTs, setConfusionTs] = useState<number | null>(null);
+  const catchUpAudioRef = useRef<HTMLAudioElement | null>(null);
 
   // Guard: student route
   useEffect(() => { requireAuth("student"); }, [requireAuth]);
@@ -182,6 +189,48 @@ export default function MuffliatoPage() {
 
   const handleSignal = (signalType: SignalType) => {
     sendPing({ student_id: studentId, signal_type: signalType, ts: new Date().toISOString(), avatar });
+    if (signalType === SignalType.LOST) {
+      setConfusionTs(Date.now() / 1000); // Track when confusion started
+    }
+  };
+
+  const fetchCatchUpChunks = useCallback(async () => {
+    if (!confusionTs) return;
+    setCatchUpLoading(true);
+    try {
+      const manifest = await api.fullManifest(lectureId);
+      // Show chunks from confusion time onwards
+      const relevant = manifest.filter((c: RecordingChunk) => c.end_ts >= confusionTs - 10);
+      setCatchUpChunks(relevant.slice(-20)); // Last 20 chunks
+    } catch (err) {
+      console.error("Catch-up fetch error:", err);
+    } finally {
+      setCatchUpLoading(false);
+    }
+  }, [confusionTs, lectureId]);
+
+  const playCatchUpChunk = async (chunk: RecordingChunk) => {
+    if (catchUpAudioRef.current) {
+      catchUpAudioRef.current.pause();
+    }
+    setPlayingChunkId(chunk.chunk_id);
+    try {
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+      const token = localStorage.getItem("legilimens_token");
+      const resp = await fetch(`${apiUrl}/recording/${lectureId}/chunk/${chunk.chunk_id}`, {
+        headers: token ? { "Authorization": `Bearer ${token}` } : {}
+      });
+      if (!resp.ok) throw new Error("Chunk fetch failed");
+      const blob = await resp.blob();
+      const url = URL.createObjectURL(blob);
+      const audio = new Audio(url);
+      catchUpAudioRef.current = audio;
+      audio.onended = () => setPlayingChunkId(null);
+      await audio.play();
+    } catch (err) {
+      console.error("Playback error:", err);
+      setPlayingChunkId(null);
+    }
   };
 
   return (
@@ -334,6 +383,55 @@ export default function MuffliatoPage() {
                     )}
                   </div>
                 </a>
+              ))}
+            </div>
+          )}
+        </section>
+      )}
+
+      {/* Catch Up — Review what you missed */}
+      {confusionTs && (
+        <section style={styles.catchUpSection}>
+          <h3 style={styles.catchUpTitle}>📼 What did I miss?</h3>
+          <p style={{ opacity: 0.7, fontSize: "0.85rem", textAlign: "center", margin: "0 0 0.75rem 0" }}>
+            Review the lecture from when you got confused
+          </p>
+          {catchUpChunks.length === 0 && !catchUpLoading && (
+            <button
+              onClick={fetchCatchUpChunks}
+              style={styles.catchUpButton}
+            >
+              🔍 Load Recording
+            </button>
+          )}
+          {catchUpLoading && (
+            <p style={{ textAlign: "center", opacity: 0.6 }}>Loading chunks...</p>
+          )}
+          {catchUpChunks.length > 0 && (
+            <div style={styles.catchUpList}>
+              {catchUpChunks.map((chunk) => (
+                <div
+                  key={chunk.chunk_id}
+                  style={{
+                    ...styles.catchUpChunk,
+                    borderColor: playingChunkId === chunk.chunk_id ? "#7c3aed" : "rgba(255,255,255,0.1)",
+                    background: playingChunkId === chunk.chunk_id ? "rgba(124, 58, 237, 0.1)" : "rgba(255,255,255,0.03)",
+                  }}
+                  onClick={() => playCatchUpChunk(chunk)}
+                >
+                  <span style={{ fontSize: "1.2rem" }}>
+                    {playingChunkId === chunk.chunk_id ? "🔊" : "▶️"}
+                  </span>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <p style={styles.catchUpTranscript}>
+                      {chunk.transcript || "(no transcript)"}
+                    </p>
+                    <span style={styles.catchUpTime}>
+                      {Math.floor(chunk.start_ts / 60)}:{Math.floor(chunk.start_ts % 60).toString().padStart(2, "0")} —
+                      {Math.floor(chunk.end_ts / 60)}:{Math.floor(chunk.end_ts % 60).toString().padStart(2, "0")}
+                    </span>
+                  </div>
+                </div>
               ))}
             </div>
           )}
@@ -532,6 +630,67 @@ const styles = {
     overflow: "hidden" as const,
     textOverflow: "ellipsis" as const,
     whiteSpace: "nowrap" as const,
+  },
+  catchUpSection: {
+    width: "100%",
+    maxWidth: "360px",
+    margin: "1rem 0",
+    padding: "1rem",
+    background: "rgba(124, 58, 237, 0.05)",
+    border: "1px solid rgba(124, 58, 237, 0.2)",
+    borderRadius: "12px",
+  },
+  catchUpTitle: {
+    margin: "0 0 0.25rem 0",
+    fontSize: "1.1rem",
+    color: "var(--gryffindor-gold)",
+    textAlign: "center" as const,
+  },
+  catchUpButton: {
+    display: "block",
+    width: "100%",
+    padding: "0.75rem",
+    background: "rgba(124, 58, 237, 0.2)",
+    border: "1px solid rgba(124, 58, 237, 0.4)",
+    borderRadius: "10px",
+    color: "#c4b5fd",
+    fontSize: "0.95rem",
+    fontWeight: 600,
+    cursor: "pointer",
+    textAlign: "center" as const,
+  },
+  catchUpList: {
+    display: "flex",
+    flexDirection: "column" as const,
+    gap: "0.5rem",
+    maxHeight: "300px",
+    overflowY: "auto" as const,
+  },
+  catchUpChunk: {
+    display: "flex",
+    alignItems: "center",
+    gap: "0.75rem",
+    padding: "0.6rem",
+    borderRadius: "8px",
+    border: "1px solid rgba(255,255,255,0.1)",
+    cursor: "pointer",
+    transition: "all 0.2s",
+  },
+  catchUpTranscript: {
+    margin: 0,
+    fontSize: "0.82rem",
+    lineHeight: 1.4,
+    color: "rgba(255,255,255,0.85)",
+    overflow: "hidden" as const,
+    textOverflow: "ellipsis" as const,
+    display: "-webkit-box",
+    WebkitLineClamp: 2,
+    WebkitBoxOrient: "vertical" as const,
+  },
+  catchUpTime: {
+    fontSize: "0.72rem",
+    color: "rgba(255,255,255,0.4)",
+    fontFamily: "monospace",
   },
   footer: {
     marginTop: "2rem",

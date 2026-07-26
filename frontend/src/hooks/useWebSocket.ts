@@ -18,7 +18,7 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import type { LatencyBadge, ServerMessage, StudentPing } from "@/lib/types";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "ws://localhost:8001";
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "ws://localhost:8000";
 
 export function useWebSocket(
   lectureId: number,

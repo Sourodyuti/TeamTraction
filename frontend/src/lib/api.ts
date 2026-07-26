@@ -16,9 +16,12 @@ import type {
   SeedResult,
   TTSSpeakResponse,
   VideoResponse,
+  RecordingSession,
+  RecordingStatus,
+  KBChunk,
 } from "./types";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8001";
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
 function authHeaders(): HeadersInit {
   const token =
@@ -203,5 +206,26 @@ export const api = {
   // ─── Video Recommendations ─────────────────────────────────────
   videoRecommendations(concept: string, maxResults: number = 3): Promise<VideoResponse> {
     return apiFetch(`/videos/recommend/${encodeURIComponent(concept)}?max_results=${maxResults}`);
+  },
+
+  // ─── Recording Session ─────────────────────────────────────────
+  startRecordingSession(lectureId: number): Promise<RecordingSession> {
+    return apiFetch(`/recording/${lectureId}/start`, { method: "POST" });
+  },
+
+  stopRecordingSession(lectureId: number): Promise<{ status: string; lecture_id: number }> {
+    return apiFetch(`/recording/${lectureId}/stop`, { method: "POST" });
+  },
+
+  recordingStatus(lectureId: number): Promise<RecordingStatus> {
+    return apiFetch(`/recording/${lectureId}/status`);
+  },
+
+  fullManifest(lectureId: number): Promise<RecordingChunk[]> {
+    return apiFetch(`/recording/${lectureId}/full-manifest`);
+  },
+
+  kbChunks(lectureId: number): Promise<KBChunk[]> {
+    return apiFetch(`/recording/${lectureId}/kb-chunks`);
   },
 };
