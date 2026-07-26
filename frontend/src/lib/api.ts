@@ -36,6 +36,24 @@ async function apiFetch<T>(
 }
 
 export const api = {
+  // ─── Vision ─────────────────────────────────────────────────────
+  analyzeFrame(
+    image: string,
+    mime_type: string = "image/jpeg"
+  ): Promise<{
+    topic_node: string;
+    slide_text_summary: string;
+    difficulty: number;
+    key_terms: string[];
+    latency_ms: number;
+  }> {
+    return apiFetch("/vision/analyze-frame", {
+      method: "POST",
+      body: JSON.stringify({ image, mime_type }),
+    });
+  },
+
+  // ─── Health ─────────────────────────────────────────────────────
   // ─── Health ─────────────────────────────────────────────────────
   health(): Promise<{ status: string; services: Record<string, boolean> }> {
     return apiFetch("/health");

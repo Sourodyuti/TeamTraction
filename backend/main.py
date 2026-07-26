@@ -15,6 +15,7 @@ from typing import AsyncGenerator
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from services.ratelimit import RateLimitMiddleware
 
 from config import settings
 from logging_config import setup_logging
@@ -23,7 +24,7 @@ from services.embedder import Embedder
 from services.vectorai_client import VectorAIClient
 from services.vector_client import VectorAnalyticsClient
 from dependencies import set_embedder, set_vectorai, set_analytics
-from routers import websocket, asr, retrieval, analytics, recording, transcription
+from routers import websocket, asr, retrieval, analytics, recording, transcription, vision
 from routers.auth import router as auth_router
 
 logger = logging.getLogger(__name__)
@@ -165,6 +166,9 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
 
+    # Rate limiting — 60 requests/min/IP, burst 10
+    app.add_middleware(RateLimitMiddleware, requests_per_minute=60, burst=10)
+
     # ─── Health check ──────────────────────────────────────────────
     @app.get("/health")
     async def health() -> dict:
@@ -197,6 +201,28 @@ def create_app() -> FastAPI:
             },
         }
 
+    # ─── Metrics ───────────────────────────────────────────────────
+    @app.get("/metrics")
+    async def metrics() -> dict:
+        """Basic operational metrics for monitoring."""
+        from dependencies import get_embedder, get_vectorai, get_analytics
+        metrics_data = {
+            "uptime_seconds": 0,
+            "embedder_loaded": embedder is not None,
+            "vectorai_connected": vectorai_client is not None,
+            "analytics_connected": vector_analytics is not None,
+        }
+        try:
+            from routers.websocket import manager
+            total_connections = sum(
+                len(students) for students in manager._connections.values()
+            )
+            metrics_data["active_websocket_connections"] = total_connections
+            metrics_data["active_lectures"] = len(manager._connections)
+        except Exception:
+            pass
+        return metrics_data
+
     # ─── Mount routers ────────────────────────────────────────────
     app.include_router(auth_router)
     app.include_router(websocket.router)
@@ -205,6 +231,7 @@ def create_app() -> FastAPI:
     app.include_router(analytics.router)
     app.include_router(recording.router)
     app.include_router(transcription.router)
+    app.include_router(vision.router)
 
     return app
 

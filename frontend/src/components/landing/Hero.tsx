@@ -62,9 +62,11 @@ export function Hero() {
                 </svg>
               </Button>
             </Link>
-            <Button size="lg" variant="ghost" className={styles.ctaSecondary}>
-              Read the Blueprint
-            </Button>
+            <Link href="/#architecture" passHref legacyBehavior>
+              <Button size="lg" variant="ghost" className={styles.ctaSecondary}>
+                Read the Blueprint
+              </Button>
+            </Link>
           </div>
         </ScrollReveal>
 

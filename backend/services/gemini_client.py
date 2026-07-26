@@ -27,7 +27,7 @@ Original explanation: {original_text}
 Analogy:"""
 
 # Model to use — flash is cheap + fast, ideal for hackathon latency targets
-_MODEL = "gemini-2.5-flash"
+_MODEL = "gemini-2.0-flash-lite"
 
 # Retry config
 _MAX_RETRIES = 2

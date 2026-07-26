@@ -54,7 +54,7 @@ export function LatencyBadge({ badge, autoDismissMs = 8000 }: Props) {
   const stages = Object.entries(STAGE_LABELS).map(([key, label]) => ({
     key,
     label,
-    ms: (badge as Record<string, unknown>)[key] as number ?? 0,
+    ms: (badge as unknown as Record<string, unknown>)[key] as number ?? 0,
     color: STAGE_COLORS[key],
   }));
 

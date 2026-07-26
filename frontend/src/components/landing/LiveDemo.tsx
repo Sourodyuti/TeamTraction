@@ -48,11 +48,15 @@ export function LiveDemo() {
     return () => clearInterval(interval);
   }, []);
 
-  // Simulate live latency updates
+  // Simulate live latency badge updates with realistic jitter
   useEffect(() => {
     const interval = setInterval(() => {
-      // This would connect to real WebSocket in production
-    }, 1000);
+      const badge = document.querySelector("[data-latency-total]");
+      if (badge) {
+        const total = 1400 + Math.floor(Math.random() * 200);
+        badge.textContent = `${total}ms`;
+      }
+    }, 2000);
     return () => clearInterval(interval);
   }, []);
 

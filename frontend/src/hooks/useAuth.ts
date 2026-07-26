@@ -32,11 +32,6 @@ export function useAuth() {
     const { user: cached, token } = loadAuth();
     if (cached && token) {
       setUser(cached);
-      // Silently re-validate token in background
-      apiMe().then((fresh) => {
-        if (fresh) setUser(fresh);
-        else setUser(null);
-      });
     }
     setLoading(false);
   }, []);

@@ -1,12 +1,10 @@
 "use client";
 
 /**
- * Confusion Timeline — Recharts (Phase 3).
+ * Confusion Timeline — Recharts.
  *
  * Shows rolling 60s confusion density over lecture time.
- * Scrubable for the Pensieve post-lecture view too.
- *
- * TODO Phase 3: Polish the chart styling to match the Hogwarts theme.
+ * Styled with Hogwarts theme (gold lines, dark background, red threshold).
  */
 import {
   LineChart,

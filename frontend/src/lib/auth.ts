@@ -98,14 +98,15 @@ export async function apiLogin(payload: LoginPayload): Promise<AuthUser> {
 export async function apiMe(): Promise<AuthUser | null> {
   const token = getToken();
   if (!token) return null;
-  const res = await fetch(`${API_URL}/auth/me`, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
-  if (!res.ok) {
-    clearAuth();
+  try {
+    const res = await fetch(`${API_URL}/auth/me`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!res.ok) return null; // don't clearAuth — keep cached user for offline/demo
+    return res.json() as Promise<AuthUser>;
+  } catch {
     return null;
   }
-  return res.json() as Promise<AuthUser>;
 }
 
 export async function apiLogout(): Promise<void> {

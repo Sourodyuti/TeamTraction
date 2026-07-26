@@ -29,23 +29,7 @@ export default function MuffliatoPage() {
   // Guard: student route
   useEffect(() => { requireAuth("student"); }, [requireAuth]);
 
-  useEffect(() => {
-    if (typeof window !== "undefined") {
-      const params = new URLSearchParams(window.location.search);
-      const lid = Number(params.get("lectureId")) || 1;
-      setLectureId(lid);
-
-      let sid = localStorage.getItem("legilimens_student_id");
-      if (!sid && user) {
-        sid = `student_${Math.random().toString(36).slice(2, 8)}`;
-        localStorage.setItem("legilimens_student_id", sid);
-      }
-      setStudentId(sid || "student_x");
-    }
-  }, [user]);
-
-  if (authLoading || !user) return <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", color: "#c9a84c", fontSize: "1.5rem" }}>🔮 Verifying...</div>;
-
+  // Move ALL hooks before the early return on line ~49
   useEffect(() => {
     if (lastMessage?.type === 'analogy_ready') {
       const { analogy_text, audio_url } = lastMessage as any;
@@ -68,6 +52,23 @@ export default function MuffliatoPage() {
       }
     }
   }, [lastMessage]);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      const lid = Number(params.get("lectureId")) || 1;
+      setLectureId(lid);
+
+      let sid = localStorage.getItem("legilimens_student_id");
+      if (!sid && user) {
+        sid = `student_${Math.random().toString(36).slice(2, 8)}`;
+        localStorage.setItem("legilimens_student_id", sid);
+      }
+      setStudentId(sid || "student_x");
+    }
+  }, [user]);
+
+  if (authLoading || !user) return <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", color: "#c9a84c", fontSize: "1.5rem" }}>🔮 Verifying...</div>;
 
   const handleSignal = (signalType: SignalType) => {
     sendPing({ student_id: studentId, signal_type: signalType, ts: new Date().toISOString(), avatar });

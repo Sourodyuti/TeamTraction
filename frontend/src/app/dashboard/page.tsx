@@ -19,9 +19,15 @@ import Link from "next/link";
 export default function DashboardPage() {
   const [lectureId, setLectureId] = useState(1);
   const { user, loading: authLoading, logout, requireAuth } = useAuth();
-  const { conceptNodes, timelineData, latencyMs, confusionAlert, lastAnalogy, currentTopic, totalStudents } = useRadarData(lectureId);
-  const captureState = useScreenCapture();
+  const { conceptNodes, timelineData, latencyBadge, confusionAlert, lastAnalogy, currentTopic: radarTopic, totalStudents } = useRadarData(lectureId);
+  const [visionTopic, setVisionTopic] = useState<string | null>(null);
+  const captureState = useScreenCapture((context) => {
+    if (context.topic_node && context.topic_node !== "unknown") {
+      setVisionTopic(context.topic_node);
+    }
+  });
   const [overlayOpen, setOverlayOpen] = useState(true);
+  const currentTopic = visionTopic || radarTopic;
 
   // Guard: teacher-only route
   useEffect(() => { requireAuth("teacher"); }, [requireAuth]);
@@ -91,8 +97,8 @@ export default function DashboardPage() {
         {/* Latency badge + user badge */}
         <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
           <div style={styles.badge}>
-            {latencyMs !== null
-              ? `edge retrieval: ${latencyMs}ms · 0 cloud calls`
+            {latencyBadge?.total_ms != null
+              ? `edge retrieval: ${latencyBadge.total_ms}ms · 0 cloud calls`
               : "awaiting signal..."}
           </div>
           {user && (

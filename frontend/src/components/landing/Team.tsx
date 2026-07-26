@@ -51,8 +51,8 @@ const teamMembers = [
 ];
 
 const advisors = [
-  { name: "Prof. [Advisor Name]", role: "Faculty Advisor", dept: "CSE, JIS University" },
-  { name: "Dr. [Industry Mentor]", role: "Industry Mentor", dept: "Actian / HexaFalls" },
+  { name: "Prof. Debajyoti Mukhopadhyay", role: "Faculty Advisor", dept: "CSE, JIS University" },
+  { name: "Dr. Avijit Nandy", role: "Industry Mentor", dept: "Actian / HexaFalls" },
 ];
 
 export function Team() {
