@@ -132,6 +132,13 @@ function buildServiceCards(
     detail: "eleven_flash_v2_5",
     spellColor: SPELL_COLORS.sonorus,
   });
+  cards.push({
+    key: "nvidia",
+    name: "NVIDIA NIM (Fallback LLM)",
+    healthy: !!retrieval?.nvidia_configured,
+    detail: "nvidia-nim · fallback inference",
+    spellColor: "#76B900",
+  });
 
   // Vision + Whisper
   cards.push({

@@ -14,6 +14,8 @@ import type {
   DensityResponse,
   CohortMap,
   SeedResult,
+  TTSSpeakResponse,
+  VideoResponse,
 } from "./types";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8001";
@@ -184,5 +186,22 @@ export const api = {
         source: payload.source ?? "lecture",
       }),
     });
+  },
+
+  // ─── TTS ────────────────────────────────────────────────────────
+  ttsSpeak(text: string, voiceId?: string): Promise<TTSSpeakResponse> {
+    return apiFetch("/tts/speak", {
+      method: "POST",
+      body: JSON.stringify({ text, voice_id: voiceId }),
+    });
+  },
+
+  ttsHealth(): Promise<{ elevenlabs: boolean; browser_fallback: boolean; ready: boolean }> {
+    return apiFetch("/tts/health");
+  },
+
+  // ─── Video Recommendations ─────────────────────────────────────
+  videoRecommendations(concept: string, maxResults: number = 3): Promise<VideoResponse> {
+    return apiFetch(`/videos/recommend/${encodeURIComponent(concept)}?max_results=${maxResults}`);
   },
 };
