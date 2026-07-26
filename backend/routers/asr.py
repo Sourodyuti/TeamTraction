@@ -15,7 +15,7 @@ import time
 from datetime import datetime, timezone
 from typing import Optional
 
-from fastapi import APIRouter, BackgroundTasks, HTTPException, Query
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Query, UploadFile, File, Form
 from pydantic import BaseModel, Field
 
 from models.database import get_vector_connection
@@ -311,3 +311,134 @@ async def list_chunks(lecture_id: int, limit: int = Query(50, ge=1, le=500)) -> 
     except Exception as e:
         logger.error("Failed to list chunks: %s", e)
         raise HTTPException(status_code=503, detail=f"Failed: {e}")
+
+
+# ─── Video / audio file ingestion ────────────────────────────────
+
+class VideoIngestResponse(BaseModel):
+    """Result of ingesting a video/audio file into VectorAI DB."""
+    lecture_id: int
+    chunks_indexed: int
+    chunks_failed: int
+    segments_detected: int
+    duration_seconds: float
+    source_filename: str
+
+
+@router.post("/ingest-video", response_model=VideoIngestResponse)
+async def ingest_video(
+    lecture_id: int = Form(..., ge=1),
+    topic_node: str = Form("lecture_video", max_length=64),
+    difficulty: int = Form(3, ge=1, le=10),
+    chunk_words: int = Form(80, ge=10, le=500,
+                            description="Target word-count per KB chunk (sliding window)"),
+    audio_file: UploadFile = File(..., description="Audio or video file (webm, mp4, mp3, wav, ogg)"),
+) -> VideoIngestResponse:
+    """Transcribe a video/audio file and index all segments into VectorAI DB.
+
+    Pipeline:
+      1. Read uploaded bytes
+      2. Run WhisperService.transcribe_bytes() — returns timestamped segments
+      3. Slide a word-count window over the segments to produce ~chunk_words-word chunks
+      4. Call KnowledgeBase.index_chunk() for each chunk (embed + upsert)
+
+    This closes the structural gap where video content had no path into
+    the vector DB at all (the /videos router only does YouTube lookup).
+    """
+    from services.whisper_service import get_whisper_service
+    from services.knowledge_base import get_knowledge_base
+
+    ws = get_whisper_service()
+    if not ws.available:
+        raise HTTPException(
+            status_code=503,
+            detail="WhisperService unavailable — install faster-whisper or check model path.",
+        )
+
+    audio_bytes = await audio_file.read()
+    if not audio_bytes:
+        raise HTTPException(status_code=400, detail="Uploaded file is empty.")
+
+    # 1. Transcribe
+    full_text, segments = ws.transcribe_bytes(audio_bytes)
+    if not segments and not full_text.strip():
+        raise HTTPException(
+            status_code=422,
+            detail="Whisper returned no transcript for the uploaded file.",
+        )
+
+    # Estimate total duration from last segment
+    duration_seconds = segments[-1]["end"] if segments else 0.0
+
+    # 2. Build sliding-window chunks from segments
+    #    Each chunk is ~chunk_words words; we track the start timestamp of the first
+    #    segment in each window so we can store ts in the payload.
+    kb = get_knowledge_base()
+    chunks_indexed = 0
+    chunks_failed = 0
+    word_buffer: list[str] = []
+    buffer_start_ts: float = 0.0
+    chunk_index = 0
+
+    def _flush_buffer(buf: list[str], start_ts: float, idx: int) -> None:
+        nonlocal chunks_indexed, chunks_failed
+        if not buf:
+            return
+        text = " ".join(buf).strip()
+        if not text:
+            return
+        chunk_id = f"{lecture_id}_video_{int(start_ts * 1000)}_{idx}"
+        ok = kb.index_chunk(
+            lecture_id=lecture_id,
+            chunk_id=chunk_id,
+            text=text,
+            ts=start_ts,
+            topic_node=topic_node,
+            difficulty=difficulty,
+        )
+        if ok:
+            chunks_indexed += 1
+        else:
+            chunks_failed += 1
+            logger.warning(
+                "Video chunk '%s' (ts=%.1f) was NOT indexed to VectorAI DB.",
+                chunk_id, start_ts,
+            )
+
+    for seg in segments:
+        seg_words = seg["text"].split()
+        if not word_buffer:
+            buffer_start_ts = seg["start"]
+        word_buffer.extend(seg_words)
+        if len(word_buffer) >= chunk_words:
+            _flush_buffer(word_buffer, buffer_start_ts, chunk_index)
+            chunk_index += 1
+            word_buffer = []
+            buffer_start_ts = 0.0
+
+    # If Whisper returned only full_text with no segments (fallback path)
+    if not segments and full_text.strip():
+        words = full_text.split()
+        for i in range(0, max(1, len(words)), chunk_words):
+            window = words[i: i + chunk_words]
+            _flush_buffer(window, float(i), chunk_index)
+            chunk_index += 1
+    else:
+        # Flush any remaining words
+        _flush_buffer(word_buffer, buffer_start_ts, chunk_index)
+
+    logger.info(
+        "Video ingest complete: lecture=%d file=%s segments=%d "
+        "chunks_indexed=%d chunks_failed=%d duration=%.1fs",
+        lecture_id, audio_file.filename, len(segments),
+        chunks_indexed, chunks_failed, duration_seconds,
+    )
+
+    return VideoIngestResponse(
+        lecture_id=lecture_id,
+        chunks_indexed=chunks_indexed,
+        chunks_failed=chunks_failed,
+        segments_detected=len(segments),
+        duration_seconds=duration_seconds,
+        source_filename=audio_file.filename or "",
+    )
