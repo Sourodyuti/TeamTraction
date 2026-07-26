@@ -185,15 +185,7 @@ export default function MuffliatoPage() {
     setIsSpeaking(false);
   };
 
-  if (authLoading || !user) return <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", color: "#c9a84c", fontSize: "1.5rem" }}>🔮 Verifying...</div>;
-
-  const handleSignal = (signalType: SignalType) => {
-    sendPing({ student_id: studentId, signal_type: signalType, ts: new Date().toISOString(), avatar });
-    if (signalType === SignalType.LOST) {
-      setConfusionTs(Date.now() / 1000); // Track when confusion started
-    }
-  };
-
+  // Catch-up: fetch chunks (must be before early return — Rules of Hooks)
   const fetchCatchUpChunks = useCallback(async () => {
     if (!confusionTs) return;
     setCatchUpLoading(true);
@@ -208,6 +200,17 @@ export default function MuffliatoPage() {
       setCatchUpLoading(false);
     }
   }, [confusionTs, lectureId]);
+
+  if (authLoading || !user) return <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", color: "#c9a84c", fontSize: "1.5rem" }}>🔮 Verifying...</div>;
+
+  const handleSignal = (signalType: SignalType) => {
+    sendPing({ student_id: studentId, signal_type: signalType, ts: new Date().toISOString(), avatar });
+    if (signalType === SignalType.LOST) {
+      setConfusionTs(Date.now() / 1000); // Track when confusion started
+    }
+  };
+
+
 
   const playCatchUpChunk = async (chunk: RecordingChunk) => {
     if (catchUpAudioRef.current) {
