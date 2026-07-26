@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 # Default calm tutor voice — Rachel is warm/clear, good for explanations.
 # Override via ELEVENLABS_VOICE_ID env var if needed.
 _DEFAULT_VOICE_ID = "21m00Tcm4TlvDq8ikWAM"  # Rachel
-_DEFAULT_MODEL_ID = "eleven_monolingual_v1"
+_DEFAULT_MODEL_ID = "eleven_flash_v2_5"
 
 
 class ElevenLabsClient:

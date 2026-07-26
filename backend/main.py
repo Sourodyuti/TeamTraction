@@ -118,13 +118,16 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
     # Shutdown
     logger.info("Legilimens shutting down...")
-    from dependencies import get_vectorai, get_analytics
-    vdb = get_vectorai()
-    if vdb:
-        vdb.close()
-    analytics = get_analytics()
-    if analytics:
-        analytics.close()
+    try:
+        from dependencies import get_vectorai, get_analytics
+        vdb = get_vectorai()
+        if vdb:
+            vdb.close()
+        analytics = get_analytics()
+        if analytics:
+            analytics.close()
+    except RuntimeError:
+        pass  # Service not initialized, that's fine
     logger.info("Connections closed. Goodbye.")
 
 
@@ -152,15 +155,31 @@ def create_app() -> FastAPI:
     @app.get("/health")
     async def health() -> dict:
         """Liveness + dependency health probe."""
-        from dependencies import get_embedder, get_vectorai, get_analytics
+        from dependencies import get_embedder, get_vectorai
+        analytics_ok = False
+        try:
+            from dependencies import get_analytics
+            analytics_ok = get_analytics() is not None
+        except RuntimeError:
+            pass
+        vectorai_ok = False
+        try:
+            vectorai_ok = get_vectorai() is not None
+        except RuntimeError:
+            pass
+        embedder_ok = False
+        try:
+            embedder_ok = get_embedder() is not None
+        except RuntimeError:
+            pass
         return {
             "status": "ok",
             "service": "legilimens",
             "version": app.version,
             "services": {
-                "embedder": get_embedder() is not None,
-                "vectorai_db": get_vectorai() is not None,
-                "actian_vector": get_analytics() is not None,
+                "embedder": embedder_ok,
+                "vectorai_db": vectorai_ok,
+                "actian_vector": analytics_ok,
             },
         }
 

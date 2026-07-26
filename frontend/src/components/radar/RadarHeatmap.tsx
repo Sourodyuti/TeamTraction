@@ -64,7 +64,7 @@ export function RadarHeatmap({ nodes, lectureTitle = "Backpropagation Lecture", 
     // ─── Angle scale: distribute nodes evenly around circle ─────────────
     const angleScale = d3
       .scalePoint<string>()
-      .domain(nodes.map((n) => n.name))
+      .domain(nodes.map((n) => n.label))
       .range([0, 2 * Math.PI])
       .padding(0.5);
 
@@ -76,8 +76,8 @@ export function RadarHeatmap({ nodes, lectureTitle = "Backpropagation Lecture", 
       .range([radius * 0.4, radius * 0.9]);
 
     // ─── Merge with previous nodes for smooth transitions ──────────────
-    // Create a map of previous nodes by name for position interpolation
-    const prevNodeMap = new Map(prevNodesRef.current.map((n) => [n.name, n]));
+    // Create a map of previous nodes by label for position interpolation
+    const prevNodeMap = new Map(prevNodesRef.current.map((n) => [n.label, n]));
 
     // ─── Draw arcs (background rings for reference) ────────────────────
     const arcCount = 4;
@@ -108,7 +108,7 @@ export function RadarHeatmap({ nodes, lectureTitle = "Backpropagation Lecture", 
     // ─── Concept node groups ───────────────────────────────────────────
     const nodeGroups = g
       .selectAll<SVGGElement, ConceptNode>(".concept-node")
-      .data(nodes, (d: ConceptNode) => d.name)
+      .data(nodes, (d: ConceptNode) => d.id)
       .join(
         (enter) => {
           // ENTER: new nodes
@@ -151,7 +151,7 @@ export function RadarHeatmap({ nodes, lectureTitle = "Backpropagation Lecture", 
             .attr("fill", "#e4e4e7")
             .attr("font-size", "11px")
             .attr("font-weight", 500)
-            .text((d) => d.name.replace(/_/g, " "));
+            .text((d) => d.label);
 
           return group;
         },
@@ -169,7 +169,7 @@ export function RadarHeatmap({ nodes, lectureTitle = "Backpropagation Lecture", 
       .ease(d3.easeCubicOut)
       .attr("opacity", 1)
       .attr("transform", (d) => {
-        const angle = angleScale(d.name)! - Math.PI / 2;
+        const angle = angleScale(d.label)! - Math.PI / 2;
         const r = radialScale(d.confusionDensity);
         return `translate(${Math.cos(angle) * r}, ${Math.sin(angle) * r})`;
       });
@@ -211,7 +211,7 @@ export function RadarHeatmap({ nodes, lectureTitle = "Backpropagation Lecture", 
       });
 
     // Update labels
-    nodeGroups.select<SVGTextElement>(".node-label").text((d) => d.name.replace(/_/g, " "));
+    nodeGroups.select<SVGTextElement>(".node-label").text((d) => d.label);
 
     // ─── Tooltips ──────────────────────────────────────────────────────
     const tooltip = d3.select("body").append("div").attr("class", "radar-tooltip").style("opacity", 0).style("position", "absolute").style("pointer-events", "none").style("background", "rgba(26, 15, 46, 0.95)").style("border", "1px solid #d3a625").style("border-radius", "8px").style("padding", "8px 12px").style("font-size", "12px").style("color", "#fafafa").style("z-index", 1000);
@@ -221,7 +221,7 @@ export function RadarHeatmap({ nodes, lectureTitle = "Backpropagation Lecture", 
         tooltip
           .html(
             `
-            <strong style="color: #d3a625">${d.name.replace(/_/g, " ")}</strong><br/>
+            <strong style="color: #d3a625">${d.label}</strong><br/>
             Confusion Density: <span style="color:${colorScale(d.confusionDensity)}">${(d.confusionDensity * 100).toFixed(0)}%</span><br/>
             🪄 Lost: ${d.lostCount} | ✅ Got it: ${d.gotItCount}
           `

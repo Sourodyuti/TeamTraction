@@ -125,8 +125,8 @@ async def handle_ping(
         return
 
     # 2. Tag to current concept_node
-    from routers.asr import get_current_chunk
-    current = get_current_chunk(lecture_id) or {"topic_node": "unknown", "chunk_id": "unknown", "text_preview": ""}
+    from routers.asr import get_current_chunk_sync
+    current = get_current_chunk_sync(lecture_id) or {"topic_node": "unknown", "chunk_id": "unknown", "text_preview": ""}
     concept_node = current["topic_node"]
 
     # 3. Write confusion event (non-blocking — failure must not kill the WS)

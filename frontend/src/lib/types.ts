@@ -27,15 +27,18 @@ export interface StudentPing {
 // ─── Phase 3: Radar ──────────────────────────────────────────────
 
 export interface ConceptNode {
-  name: string;
-  confusionDensity: number; // 0..1
+  id: string;
+  label: string;
+  confusion: number;
+  confusionDensity: number;
+  lastSignal: string;
   lostCount: number;
   gotItCount: number;
 }
 
 export interface TimelinePoint {
-  ts: string;
-  density: number; // 0..1
+  ts: number;
+  density: number;
 }
 
 // ─── Server → Client messages ────────────────────────────────────

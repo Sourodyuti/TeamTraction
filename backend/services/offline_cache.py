@@ -39,8 +39,12 @@ def is_cached(concept_node: str) -> bool:
     return (base.with_suffix(".json")).exists()
 
 
-def get_cached_analogy(concept_node: str) -> dict | None:
+def get_cached_analogy(concept_node: str, avatar_str: str | None = None) -> dict | None:
     """Return cached analogy data for the given concept node.
+
+    Args:
+        concept_node: The concept to retrieve
+        avatar_str: Optional avatar filter (not implemented, for API compatibility)
 
     Returns a dict with keys:
         - concept_node: str

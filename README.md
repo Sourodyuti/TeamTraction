@@ -58,17 +58,26 @@ The defining structural choice: **the entire student-data path (capture → embe
 
 ---
 
-## Bring-up (2 commands)
+## Bring-up
 
 ```bash
-# 1. Start all services (Actian VectorAI DB, Actian Vector, FastAPI)
-docker-compose up -d
+# 1. Start Actian VectorAI DB
+docker run -d --name vectorai -p 6573-6575:6573-6575 -e ACTIAN_VECTORAI_ACCEPT_EULA=YES actian/vectorai:latest
 
-# 2. Run the dev servers
-cd backend && pip install -r requirements.txt && uvicorn main:app --reload --host 0.0.0.0 --port 8000
-# in another terminal:
+# 2. Backend
+python3 -m venv .venv && source .venv/bin/activate
+cd backend && pip install -r requirements.txt
+cp .env.example .env  # Add your API keys
+uvicorn main:app --reload --host 0.0.0.0 --port 8000
+
+# 3. Frontend (in another terminal)
 cd frontend && npm install && npm run dev
 ```
+
+Access:
+- Frontend: http://localhost:3000
+- Backend API docs: http://localhost:8000/docs
+- VectorAI DB LocalUI: http://localhost:6575
 
 Whisper.cpp (local ASR) is optional for the core demo — see `whisper.cpp/` build instructions below.
 
@@ -80,12 +89,18 @@ Whisper.cpp (local ASR) is optional for the core demo — see `whisper.cpp/` bui
 
 ```
 TeamTraction/
-├── docker-compose.yml        # VectorAI DB + Actian Vector + FastAPI
 ├── backend/                  # FastAPI orchestrator (WebSocket hub, retrieval, analytics)
-├── frontend/                 # Next.js 14 PWA (Muffliato) + Teacher Dashboard (Radar, Pensieve)
-├── data-prep/                # Chunk + embed lecture / textbook into VectorAI DB
-├── scripts/                  # Demo setup + latency benchmarking
-└── whisper.cpp/              # Local ASR (clone + build — see below)
+│   ├── main.py              # Entry point
+│   ├── routers/             # WebSocket, retrieval, analytics, ASR
+│   ├── services/            # VectorAI, Gemini, ElevenLabs clients
+│   └── tests/                # Pytest suite
+├── frontend/                 # Next.js 14 PWA
+│   └── src/
+│       ├── app/             # Landing, Muffliato, Dashboard pages
+│       ├── components/      # Radar, Timeline, UI components
+│       └── hooks/           # WebSocket, radar data hooks
+├── scripts/                  # Demo startup script
+└── docker-compose.yml        # Docker orchestration
 ```
 
 ---

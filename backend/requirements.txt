@@ -9,7 +9,7 @@ pydantic>=2.0
 pydantic-settings>=2.0
 
 # Actian
-qdrant-client>=1.9            # Actian VectorAI DB SDK (Qdrant-based, gRPC)
+actian-vectorai-client       # Actian VectorAI DB SDK
 pyodbc                        # Actian Vector columnar SQL driver
 
 # Embeddings (on-prem, bge-small-en, 384-dim)

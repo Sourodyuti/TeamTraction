@@ -29,6 +29,19 @@ class Embedder:
         return cls._instance
 
     @property
+    def available(self) -> bool:
+        """Check if model is available."""
+        return self._model is not None or self._try_load()
+
+    def _try_load(self) -> bool:
+        """Try to load the model. Returns True if successful."""
+        try:
+            _ = self.model
+            return True
+        except Exception:
+            return False
+
+    @property
     def model(self):
         if self._model is None:
             from sentence_transformers import SentenceTransformer
