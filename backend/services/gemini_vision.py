@@ -181,10 +181,11 @@ class GeminiVisionClient:
             b64_image = base64.b64encode(image_bytes).decode("utf-8")
             ocr_text = ""
         
+        system_instruction = "CRITICAL INSTRUCTION: You are a strict JSON data extraction API. You must output EXACTLY AND ONLY a raw JSON object. Do NOT output markdown headers like **Topic Node:**. Do NOT output conversational text. Output MUST start with { and end with }."
         if ocr_text:
-            prompt = f"I have run local OCR on this image. OCR Text:\n{ocr_text}\n\nBased on the image and this exact OCR text, {_CONTEXT_PROMPT}"
+            prompt = f"{system_instruction}\n\nI have run local OCR on this image. OCR Text:\n{ocr_text}\n\nBased on the image and this exact OCR text, {_CONTEXT_PROMPT}"
         else:
-            prompt = _CONTEXT_PROMPT
+            prompt = f"{system_instruction}\n\n{_CONTEXT_PROMPT}"
 
         headers = {
             "Authorization": f"Bearer {api_key}",
@@ -220,9 +221,58 @@ class GeminiVisionClient:
             start_idx = response_text.find("{")
             end_idx = response_text.rfind("}")
             if start_idx != -1 and end_idx != -1 and end_idx >= start_idx:
-                context = json.loads(response_text[start_idx:end_idx + 1])
+                try:
+                    # Clean control chars that Llama sometimes leaves unescaped
+                    clean_json = re.sub(r'[\x00-\x1F\x7F]', '', response_text[start_idx:end_idx + 1])
+                    context = json.loads(clean_json)
+                except json.JSONDecodeError:
+                    context = json.loads(response_text[start_idx:end_idx + 1].replace('\n', '\\n'))
             else:
-                raise ValueError(f"No JSON block found in response: {response_text}")
+                # Robust fallback for conversational markdown headers (Llama NIM quirk)
+                import re
+                context = {}
+                
+                topic_match = re.search(r'\*\*\s*Topic(?: Node)?\s*\*\*\s*:?\s*(.+)', response_text, re.IGNORECASE)
+                if topic_match:
+                    context["topic_node"] = topic_match.group(1).strip()
+                
+                summary_match = re.search(r'\*\*\s*Comprehensive Summary\s*\*\*\s*:?\s*([\s\S]*?)(?=\*\*|$)', response_text, re.IGNORECASE)
+                if summary_match:
+                    context["comprehensive_summary"] = summary_match.group(1).strip()
+                    
+                brief_match = re.search(r'\*\*\s*Brief Summary\s*\*\*\s*:?\s*([\s\S]*?)(?=\*\*|$)', response_text, re.IGNORECASE)
+                if brief_match:
+                    context["brief_summary"] = brief_match.group(1).strip()
+                    
+                full_text_match = re.search(r'\*\*\s*Full Text Transcription\s*\*\*\s*:?\s*([\s\S]*?)(?=\*\*|$)', response_text, re.IGNORECASE)
+                if full_text_match:
+                    context["full_text_transcription"] = full_text_match.group(1).strip()
+                    
+                diagrams_match = re.search(r'\*\*\s*Diagram Descriptions\s*\*\*\s*:?\s*([\s\S]*?)(?=\*\*|$)', response_text, re.IGNORECASE)
+                if diagrams_match:
+                    context["diagram_descriptions"] = diagrams_match.group(1).strip()
+                    
+                diff_match = re.search(r'\*\*\s*Difficulty\s*\*\*\s*:?\s*(\d+)', response_text, re.IGNORECASE)
+                if diff_match:
+                    context["difficulty"] = int(diff_match.group(1).strip())
+                    
+                terms_match = re.search(r'\*\*\s*Key Terms\s*\*\*\s*:?\s*([\s\S]*?)(?=\*\*|$)', response_text, re.IGNORECASE)
+                if terms_match:
+                    terms_str = terms_match.group(1).strip()
+                    if "[" in terms_str and "]" in terms_str:
+                        try:
+                            context["key_terms"] = json.loads(terms_str[terms_str.find("["):terms_str.rfind("]") + 1])
+                        except:
+                            context["key_terms"] = [t.strip().strip('"').strip("'") for t in terms_str.replace("[", "").replace("]", "").split(",")]
+                    else:
+                        context["key_terms"] = [t.strip().lstrip('-').lstrip('*').strip() for t in terms_str.split('\n') if t.strip()]
+
+                if not context:
+                    raise ValueError(f"No JSON block or markdown headers found in response: {response_text}")
+
+                # Merge with defaults
+                context = {**_UNKNOWN, **context}
+
             elapsed_ms = (time.perf_counter() - start) * 1000
             
             logger.info("Nvidia Vision fallback succeeded: topic=%s latency=%.0fms", context.get("topic_node", "unknown"), elapsed_ms)
