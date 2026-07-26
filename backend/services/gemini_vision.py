@@ -22,13 +22,16 @@ Identify the main concept, topic, or activity being shown.
 Respond STRICTLY with a valid JSON object matching this exact format and nothing else. Do not use markdown wrappers:
 {
   "topic_node": "snake_case_topic_name",
-  "slide_text_summary": "detailed summary of the visual and text content",
+  "full_text_transcription": "Exact transcription of all text, numbers, code, and values visible on the screen",
+  "diagram_descriptions": "Detailed explanation of any diagrams, charts, UI elements, or visual structures (or 'None')",
+  "comprehensive_summary": "Full comprehensive and detailed summary of the visual and text content",
+  "brief_summary": "A small 2-line summary of the content",
   "difficulty": 1-10,
   "key_terms": ["term1", "term2"]
 }
 
 If you cannot determine the topic, respond with:
-{"topic_node": "unknown", "slide_text_summary": "Could not determine context.", "difficulty": 5, "key_terms": []}
+{"topic_node": "unknown", "full_text_transcription": "", "diagram_descriptions": "", "comprehensive_summary": "Could not determine context.", "brief_summary": "", "difficulty": 5, "key_terms": []}
 """
 
 _ASK_PROMPT = """You are an AI assistant analyzing a screen capture or image.
@@ -41,7 +44,10 @@ Provide a helpful and detailed answer. Include exactly 2 relevant YouTube video 
 Respond STRICTLY with a valid JSON object matching this exact format and nothing else. Do not use markdown wrappers:
 {{
   "topic_node": "snake_case_topic_name",
-  "slide_text_summary": "detailed summary of the visual and text content",
+  "full_text_transcription": "Exact transcription of all text, numbers, code, and values visible on the screen",
+  "diagram_descriptions": "Detailed explanation of any diagrams, charts, UI elements, or visual structures (or 'None')",
+  "comprehensive_summary": "Full comprehensive and detailed summary of the visual and text content",
+  "brief_summary": "A small 2-line summary of the content",
   "difficulty": 5,
   "key_terms": ["term1", "term2"],
   "answer": "Your detailed answer to the user's question, including 2 YouTube links."

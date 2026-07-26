@@ -26,7 +26,10 @@ class FrameAnalysisRequest(BaseModel):
 
 class FrameAnalysisResponse(BaseModel):
     topic_node: str
-    slide_text_summary: str
+    comprehensive_summary: str
+    brief_summary: str
+    full_text_transcription: str
+    diagram_descriptions: str
     difficulty: int
     key_terms: list[str]
     latency_ms: float
@@ -50,19 +53,25 @@ async def analyze_frame(req: FrameAnalysisRequest) -> FrameAnalysisResponse:
     )
 
     topic_node = context.get("topic_node", "unknown")
-    slide_text_summary = context.get("slide_text_summary", "")
+    comprehensive_summary = context.get("comprehensive_summary", "")
+    brief_summary = context.get("brief_summary", "")
+    full_text = context.get("full_text_transcription", "")
+    diagrams = context.get("diagram_descriptions", "")
     difficulty = context.get("difficulty", 5)
 
     # Index into VectorDB for future retrieval
-    if topic_node != "unknown" and slide_text_summary:
+    if topic_node != "unknown" and comprehensive_summary:
         from services.knowledge_base import get_knowledge_base
         import uuid
         import time
+        
+        rich_text = f"Transcription: {full_text}\nDiagrams: {diagrams}\nSummary: {comprehensive_summary}"
+        
         kb = get_knowledge_base()
         kb.index_chunk(
             lecture_id=1,
             chunk_id=str(uuid.uuid4()),
-            text=slide_text_summary,
+            text=rich_text,
             ts=time.time(),
             topic_node=topic_node,
             difficulty=difficulty
@@ -70,7 +79,10 @@ async def analyze_frame(req: FrameAnalysisRequest) -> FrameAnalysisResponse:
 
     return FrameAnalysisResponse(
         topic_node=topic_node,
-        slide_text_summary=slide_text_summary,
+        comprehensive_summary=comprehensive_summary,
+        brief_summary=brief_summary,
+        full_text_transcription=full_text,
+        diagram_descriptions=diagrams,
         difficulty=difficulty,
         key_terms=context.get("key_terms", []),
         latency_ms=latency_ms,
