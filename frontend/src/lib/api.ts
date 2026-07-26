@@ -2,7 +2,19 @@
  * FastAPI REST client — all endpoint URLs in one place.
  * Automatically attaches JWT from localStorage on every authenticated request.
  */
-import type { TopConfusingMoment, AnalogyResponse, RecordingChunk } from "./types";
+import type {
+  TopConfusingMoment,
+  AnalogyResponse,
+  RecordingChunk,
+  HealthResponse,
+  MetricsResponse,
+  RetrievalHealthResponse,
+  VisionHealthResponse,
+  TranscriptionStatusResponse,
+  DensityResponse,
+  CohortMap,
+  SeedResult,
+} from "./types";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8001";
 
@@ -54,9 +66,12 @@ export const api = {
   },
 
   // ─── Health ─────────────────────────────────────────────────────
-  // ─── Health ─────────────────────────────────────────────────────
-  health(): Promise<{ status: string; services: Record<string, boolean> }> {
+  health(): Promise<HealthResponse> {
     return apiFetch("/health");
+  },
+
+  metrics(): Promise<MetricsResponse> {
+    return apiFetch("/metrics");
   },
 
   // ─── Analytics ──────────────────────────────────────────────────
@@ -64,30 +79,37 @@ export const api = {
     return apiFetch(`/analytics/top-moments?lecture_id=${lectureId}&limit=${limit}`);
   },
 
-  getDensity(lectureId: number): Promise<{ ts: string; density: number }[]> {
+  /**
+   * Raw confusion events from /analytics/density.
+   * Returns {data: [{ts, type}]} — density is derived client-side
+   * (see lib/analytics-transforms.ts eventsToDensityTimeline).
+   */
+  getDensity(lectureId: number): Promise<DensityResponse> {
     return apiFetch(`/analytics/density?lecture_id=${lectureId}`);
   },
 
-  getCohortHeatmap(lectureId: number): Promise<{ concept_node: string; hour: number; avg_density: number }[]> {
+  /**
+   * Cohort heatmap as a map {concept_node: {lost, gotit}}.
+   * Normalized into render rows by cohortMapToGrid.
+   */
+  getCohortHeatmap(lectureId: number): Promise<CohortMap> {
     return apiFetch(`/analytics/cohort-heatmap?lecture_id=${lectureId}`);
   },
 
-  getSummary(lectureId: number): Promise<Record<string, unknown>> {
+  getSummary(lectureId: number): Promise<{ total: number; lost: number; gotit: number }> {
     return apiFetch(`/analytics/summary?lecture_id=${lectureId}`);
   },
 
-  // ─── Recording ──────────────────────────────────────────────────
-  getManifest(lectureId: number): Promise<RecordingChunk[]> {
-    return apiFetch(`/recording/${lectureId}/manifest`);
-  },
-
-  /** Returns a fully-qualified URL for audio playback (no fetch needed). */
-  getChunkAudioUrl(lectureId: number, chunkId: string): string {
-    const token = typeof window !== "undefined" ? localStorage.getItem("legilimens_token") : null;
-    return `${API_URL}/recording/${lectureId}/chunk/${chunkId}${token ? `?token=${token}` : ""}`;
+  /** Seed 6 demo confusion events (chain_rule + gradient_descent). */
+  seedDemo(lectureId: number = 1): Promise<SeedResult> {
+    return apiFetch(`/analytics/seed?lecture_id=${lectureId}`, { method: "POST" });
   },
 
   // ─── Retrieval ──────────────────────────────────────────────────
+  retrievalHealth(): Promise<RetrievalHealthResponse> {
+    return apiFetch("/retrieval/health");
+  },
+
   triggerAnalogy(
     lectureId: number,
     conceptNode: string,
@@ -105,9 +127,41 @@ export const api = {
     });
   },
 
+  /** Demo endpoint with sensible defaults — no request body needed. */
+  accioDemo(conceptNode: string = "chain_rule", avatar: string = "cricketer"): Promise<AnalogyResponse> {
+    return apiFetch(
+      `/retrieval/accio/demo?concept_node=${encodeURIComponent(conceptNode)}&avatar=${encodeURIComponent(avatar)}`
+    );
+  },
+
+  /** URL for a pre-cached offline analogy MP3 (cable-pull demo). */
+  accioCachedUrl(conceptNode: string, avatar: string = "cricketer"): string {
+    return `${API_URL}/retrieval/accio-cached?concept_node=${encodeURIComponent(conceptNode)}&avatar=${encodeURIComponent(avatar)}`;
+  },
+
   /** Legacy alias kept for backwards compat with pensieve page */
   triggerAccio(conceptNode: string, chunkText: string): Promise<AnalogyResponse> {
     return this.triggerAnalogy(1, conceptNode, chunkText);
+  },
+
+  // ─── Recording ──────────────────────────────────────────────────
+  getManifest(lectureId: number): Promise<RecordingChunk[]> {
+    return apiFetch(`/recording/${lectureId}/manifest`);
+  },
+
+  /** Returns a fully-qualified URL for audio playback (no fetch needed). */
+  getChunkAudioUrl(lectureId: number, chunkId: string): string {
+    const token = typeof window !== "undefined" ? localStorage.getItem("legilimens_token") : null;
+    return `${API_URL}/recording/${lectureId}/chunk/${chunkId}${token ? `?token=${token}` : ""}`;
+  },
+
+  // ─── Per-router health ──────────────────────────────────────────
+  visionHealth(): Promise<VisionHealthResponse> {
+    return apiFetch("/vision/health");
+  },
+
+  transcriptionStatus(): Promise<TranscriptionStatusResponse> {
+    return apiFetch("/transcription/status");
   },
 
   // ─── ASR ────────────────────────────────────────────────────────
